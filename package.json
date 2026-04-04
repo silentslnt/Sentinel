@@ -1,0 +1,12 @@
+{
+  "name": "silvguard",
+  "version": "1.0.0",
+  "description": "SILV GUARD — Discord moderation & utility bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  }
+}
