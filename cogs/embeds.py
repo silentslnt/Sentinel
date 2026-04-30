@@ -34,11 +34,14 @@ CREATE TABLE IF NOT EXISTS embed_buttons (
     guild_id   BIGINT NOT NULL,
     embed_name TEXT NOT NULL,
     position   INTEGER NOT NULL,
-    style      TEXT NOT NULL,  -- 'link' | 'role' | 'open' | 'plain'
+    style      TEXT NOT NULL,  -- 'link' | 'role' | 'open' | 'plain' | 'form' | 'ticket' | 'verify'
     color      TEXT NOT NULL DEFAULT 'blurple',
     label      TEXT NOT NULL,
-    target     TEXT
+    target     TEXT,
+    emoji      TEXT
 );
+
+ALTER TABLE embed_buttons ADD COLUMN IF NOT EXISTS emoji TEXT;
 
 CREATE INDEX IF NOT EXISTS embed_buttons_lookup
     ON embed_buttons (guild_id, embed_name, position);
@@ -59,11 +62,14 @@ COLOR_STYLES = {
 
 class RoleToggleButton(discord.ui.DynamicItem[discord.ui.Button],
                        template=r"sentinel:roletoggle:(?P<role_id>\d+)"):
-    def __init__(self, role_id: int, label: str = "Role", style: discord.ButtonStyle = discord.ButtonStyle.primary):
+    def __init__(self, role_id: int, label: str = "Role",
+                 style: discord.ButtonStyle = discord.ButtonStyle.primary,
+                 emoji=None):
         super().__init__(
             discord.ui.Button(
                 style=style,
                 label=label,
+                emoji=emoji,
                 custom_id=f"sentinel:roletoggle:{role_id}",
             )
         )
@@ -71,7 +77,7 @@ class RoleToggleButton(discord.ui.DynamicItem[discord.ui.Button],
 
     @classmethod
     async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match):
-        return cls(int(match["role_id"]), label=item.label or "Role", style=item.style)
+        return cls(int(match["role_id"]), label=item.label or "Role", style=item.style, emoji=item.emoji)
 
     async def callback(self, interaction: discord.Interaction):
         guild = interaction.guild
@@ -98,11 +104,14 @@ class RoleToggleButton(discord.ui.DynamicItem[discord.ui.Button],
 
 class OpenEmbedButton(discord.ui.DynamicItem[discord.ui.Button],
                       template=r"sentinel:embedopen:(?P<name>[a-z0-9_-]{1,32})"):
-    def __init__(self, name: str, label: str = "Open", style: discord.ButtonStyle = discord.ButtonStyle.secondary):
+    def __init__(self, name: str, label: str = "Open",
+                 style: discord.ButtonStyle = discord.ButtonStyle.secondary,
+                 emoji=None):
         super().__init__(
             discord.ui.Button(
                 style=style,
                 label=label,
+                emoji=emoji,
                 custom_id=f"sentinel:embedopen:{name}",
             )
         )
@@ -110,7 +119,7 @@ class OpenEmbedButton(discord.ui.DynamicItem[discord.ui.Button],
 
     @classmethod
     async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match):
-        return cls(match["name"], label=item.label or "Open", style=item.style)
+        return cls(match["name"], label=item.label or "Open", style=item.style, emoji=item.emoji)
 
     async def callback(self, interaction: discord.Interaction):
         bot = interaction.client
@@ -139,6 +148,23 @@ class OpenEmbedButton(discord.ui.DynamicItem[discord.ui.Button],
 
 # ---------------- Helpers ----------------
 
+def _parse_emoji(raw: Optional[str]):
+    """Convert a stored emoji string (unicode or `<:name:id>`) to something Discord accepts."""
+    if not raw:
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
+    # Custom emoji: <:name:id> or <a:name:id>
+    if raw.startswith("<") and raw.endswith(">"):
+        try:
+            return discord.PartialEmoji.from_str(raw)
+        except Exception:
+            return None
+    # Unicode emoji — Discord accepts the literal string
+    return raw
+
+
 async def build_view(bot, guild_id: int, embed_name: str) -> Optional[discord.ui.View]:
     """Build the persistent view for a saved embed's buttons."""
     rows = await bot.db.fetch(
@@ -150,18 +176,23 @@ async def build_view(bot, guild_id: int, embed_name: str) -> Optional[discord.ui
     view = discord.ui.View(timeout=None)
     for r in rows[:25]:
         style_color = COLOR_STYLES.get(r["color"], discord.ButtonStyle.secondary)
+        emoji = _parse_emoji(r.get("emoji"))
         if r["style"] == "link":
-            view.add_item(discord.ui.Button(style=discord.ButtonStyle.link, label=r["label"], url=r["target"]))
+            view.add_item(discord.ui.Button(
+                style=discord.ButtonStyle.link, label=r["label"], url=r["target"], emoji=emoji,
+            ))
         elif r["style"] == "role":
             try:
-                view.add_item(RoleToggleButton(int(r["target"]), label=r["label"], style=style_color))
+                view.add_item(RoleToggleButton(int(r["target"]), label=r["label"], style=style_color, emoji=emoji))
             except (TypeError, ValueError):
                 continue
         elif r["style"] == "open":
-            view.add_item(OpenEmbedButton(r["target"], label=r["label"], style=style_color))
+            view.add_item(OpenEmbedButton(r["target"], label=r["label"], style=style_color, emoji=emoji))
         else:  # plain (decorative)
-            view.add_item(discord.ui.Button(style=style_color, label=r["label"], disabled=True,
-                                            custom_id=f"sentinel:plain:{guild_id}:{embed_name}:{r['position']}"))
+            view.add_item(discord.ui.Button(
+                style=style_color, label=r["label"], disabled=True, emoji=emoji,
+                custom_id=f"sentinel:plain:{guild_id}:{embed_name}:{r['position']}",
+            ))
     return view
 
 
@@ -333,31 +364,31 @@ class Embeds(commands.Cog):
         await self.embed(ctx)
 
     @button.command(name="addlink")
-    async def add_link(self, ctx, name: str, label: str, url: str):
-        """Add a link button to a saved embed."""
+    async def add_link(self, ctx, name: str, label: str, url: str, emoji: Optional[str] = None):
+        """Add a link button to a saved embed. Optional emoji (unicode or <:name:id>)."""
         if await fetch_script(self.bot, ctx.guild.id, name) is None:
             return await ctx.send(f"❌ No embed named `{name}`.")
-        await self._add_button(ctx.guild.id, name, "link", "blurple", label, url)
+        await self._add_button(ctx.guild.id, name, "link", "blurple", label, url, emoji=emoji)
         await ctx.send(f"✅ Added link button `{label}` → {url}")
 
     @button.command(name="addrole")
-    async def add_role(self, ctx, name: str, label: str, role: discord.Role):
+    async def add_role(self, ctx, name: str, label: str, role: discord.Role, emoji: Optional[str] = None):
         """Add a role-toggle button to a saved embed."""
         if await fetch_script(self.bot, ctx.guild.id, name) is None:
             return await ctx.send(f"❌ No embed named `{name}`.")
         if role >= ctx.guild.me.top_role:
             return await ctx.send("❌ That role is above my highest role.")
-        await self._add_button(ctx.guild.id, name, "role", "blurple", label, str(role.id))
+        await self._add_button(ctx.guild.id, name, "role", "blurple", label, str(role.id), emoji=emoji)
         await ctx.send(f"✅ Added role-toggle button `{label}` for {role.mention}.")
 
     @button.command(name="addopen")
-    async def add_open(self, ctx, name: str, label: str, target: str):
+    async def add_open(self, ctx, name: str, label: str, target: str, emoji: Optional[str] = None):
         """Add a button that opens another saved embed ephemerally."""
         if await fetch_script(self.bot, ctx.guild.id, name) is None:
             return await ctx.send(f"❌ No embed named `{name}`.")
         if await fetch_script(self.bot, ctx.guild.id, target) is None:
             return await ctx.send(f"❌ No embed named `{target}` to open.")
-        await self._add_button(ctx.guild.id, name, "open", "grey", label, target)
+        await self._add_button(ctx.guild.id, name, "open", "grey", label, target, emoji=emoji)
         await ctx.send(f"✅ Added button `{label}` → opens `{target}` ephemerally.")
 
     @button.command(name="list")
@@ -386,16 +417,16 @@ class Embeds(commands.Cog):
         await ctx.send("✅ Button removed.")
 
     async def _add_button(self, guild_id: int, embed_name: str, style: str, color: str,
-                          label: str, target: Optional[str]):
+                          label: str, target: Optional[str], emoji: Optional[str] = None):
         next_pos = await self.bot.db.fetchval(
             "SELECT COALESCE(MAX(position), -1) + 1 FROM embed_buttons "
             "WHERE guild_id=$1 AND embed_name=$2",
             guild_id, embed_name,
         )
         await self.bot.db.execute(
-            "INSERT INTO embed_buttons (guild_id, embed_name, position, style, color, label, target) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            guild_id, embed_name, next_pos, style, color, label, target,
+            "INSERT INTO embed_buttons (guild_id, embed_name, position, style, color, label, target, emoji) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            guild_id, embed_name, next_pos, style, color, label, target, emoji,
         )
 
 
