@@ -353,10 +353,13 @@ class Embeds(commands.Cog):
             )
             return True
 
-        view = EmbedBuilderView(ctx.author.id, name=name, on_save=on_save)
+        view = EmbedBuilderView(ctx.author.id, name=name, on_save=on_save, bot=self.bot)
         view.message = await ctx.send(
-            content=f"🧱 Building embed `{name}`. Click a button below to edit a section. "
-                    f"The preview updates live; click **✅ Save** when you're done.",
+            content=(
+                f"🧱 Building embed `{name}`. Click a button below to edit a section. "
+                f"Preview updates live. Click **✅ Save** to store, then **🔘 Buttons** "
+                f"to attach link/role/open/form/ticket/verify buttons."
+            ),
             embed=view.state.to_preview_embed(),
             view=view,
         )
