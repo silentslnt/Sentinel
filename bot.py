@@ -77,11 +77,19 @@ class Sentinel(commands.Bot):
 
     @staticmethod
     def _load_static_config() -> dict:
+        defaults = {"version": "0.1.0", "support_server": None}
         path = Path("config.json")
         if not path.exists():
-            return {"version": "0.1.0"}
-        with path.open("r", encoding="utf-8") as f:
-            return json.load(f)
+            return defaults
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+            if not text:
+                return defaults
+            data = json.loads(text)
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning("config.json unreadable (%s); using defaults", e)
+            return defaults
+        return {**defaults, **data}
 
     async def setup_hook(self) -> None:
         # Connect DB before loading cogs so cogs can register their own tables.
