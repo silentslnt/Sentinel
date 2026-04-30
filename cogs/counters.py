@@ -5,12 +5,9 @@ channel renames to 2 per 10 minutes per channel — this cog updates every
 10 minutes to stay safely under that.
 
 Counter types:
-  members       — total members
-  humans        — non-bot members
-  bots          — bot members
-  boosts        — boost count
-  channels      — total channels
-  online        — members with non-offline status (requires presence intent)
+  members, humans, bots, boosts, channels, online
+
+Prefix-only commands.
 """
 from __future__ import annotations
 
@@ -18,7 +15,6 @@ import logging
 from typing import Callable
 
 import discord
-from discord import app_commands
 from discord.ext import commands, tasks
 
 log = logging.getLogger("sentinel.counters")
@@ -43,8 +39,6 @@ COUNTER_FNS: dict[str, Callable[[discord.Guild], int]] = {
     "online":   lambda g: sum(1 for m in g.members if m.status is not discord.Status.offline),
 }
 
-COUNTER_CHOICES = [app_commands.Choice(name=k, value=k) for k in COUNTER_FNS]
-
 
 class Counters(commands.Cog):
     """🔢 Counter channels"""
@@ -68,7 +62,6 @@ class Counters(commands.Cog):
                 continue
             channel = guild.get_channel(r["channel_id"])
             if channel is None:
-                # Channel deleted; clean up.
                 await self.bot.db.execute("DELETE FROM counters WHERE channel_id=$1", r["channel_id"])
                 continue
             fn = COUNTER_FNS.get(r["type"])
@@ -91,63 +84,62 @@ class Counters(commands.Cog):
     async def _before(self):
         await self.bot.wait_until_ready()
 
-    counter = app_commands.Group(
-        name="counter",
-        description="Counter channels",
-        default_permissions=discord.Permissions(manage_channels=True),
-        guild_only=True,
-    )
+    # ---------------- commands ----------------
 
-    @counter.command(name="add", description="Turn an existing voice/text channel into a counter")
-    @app_commands.choices(type=COUNTER_CHOICES)
-    @app_commands.describe(
-        channel="Channel whose name will be auto-updated",
-        type="What to count",
-        template="Display template ({type} and {value} are substituted)",
-    )
-    async def add(
-        self,
-        interaction: discord.Interaction,
-        channel: discord.VoiceChannel,
-        type: app_commands.Choice[str],
-        template: str = "{type}: {value}",
-    ):
+    @commands.group(name="counter", invoke_without_command=True)
+    @commands.guild_only()
+    @commands.has_permissions(manage_channels=True)
+    async def counter(self, ctx):
+        """Counter channels. Subcommands: add, remove, list."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
+        types = ", ".join(f"`{t}`" for t in COUNTER_FNS)
+        await ctx.send(
+            f"🔢 **Counters** — types: {types}\n"
+            f"`{prefix}counter add <#voice_channel> <type> [template]`\n"
+            f"`{prefix}counter remove <#voice_channel>`\n"
+            f"`{prefix}counter list`",
+        )
+
+    @counter.command(name="add")
+    async def add(self, ctx, channel: discord.VoiceChannel, type: str, *, template: str = "{type}: {value}"):
+        """Turn an existing voice channel into a counter."""
+        type = type.lower()
+        if type not in COUNTER_FNS:
+            return await ctx.send(f"❌ Unknown type. Choose: {', '.join(COUNTER_FNS)}")
         await self.bot.db.execute(
             """INSERT INTO counters (channel_id, guild_id, type, template) VALUES ($1, $2, $3, $4)
                ON CONFLICT (channel_id) DO UPDATE SET type=EXCLUDED.type, template=EXCLUDED.template""",
-            channel.id, interaction.guild_id, type.value, template,
+            channel.id, ctx.guild.id, type, template,
         )
-        # Run an immediate update.
         await self.update_loop.coro(self)
-        await interaction.response.send_message(
-            f"✅ {channel.mention} is now a `{type.value}` counter (updates every 10m).", ephemeral=True,
-        )
+        await ctx.send(f"✅ {channel.mention} is now a `{type}` counter (updates every 10m).")
 
-    @counter.command(name="remove", description="Stop using a channel as a counter")
-    async def remove(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+    @counter.command(name="remove")
+    async def remove(self, ctx, channel: discord.VoiceChannel):
+        """Stop using a channel as a counter."""
         result = await self.bot.db.execute(
             "DELETE FROM counters WHERE channel_id=$1", channel.id,
         )
         n = int(result.split()[-1]) if result and result.startswith("DELETE") else 0
         if n == 0:
-            return await interaction.response.send_message("ℹ️ That channel isn't a counter.", ephemeral=True)
-        await interaction.response.send_message(
-            f"✅ {channel.mention} is no longer a counter (channel itself wasn't deleted).", ephemeral=True,
-        )
+            return await ctx.send("ℹ️ That channel isn't a counter.")
+        await ctx.send(f"✅ {channel.mention} is no longer a counter.")
 
-    @counter.command(name="list", description="List counter channels in this server")
-    async def list_(self, interaction: discord.Interaction):
+    @counter.command(name="list")
+    async def list_(self, ctx):
+        """List counter channels in this server."""
         rows = await self.bot.db.fetch(
             "SELECT channel_id, type, template FROM counters WHERE guild_id=$1",
-            interaction.guild_id,
+            ctx.guild.id,
         )
         if not rows:
-            return await interaction.response.send_message("ℹ️ No counters configured.", ephemeral=True)
+            return await ctx.send("ℹ️ No counters configured.")
         lines = []
         for r in rows:
-            ch = interaction.guild.get_channel(r["channel_id"])
-            lines.append(f"{ch.mention if ch else f'<#{r[\"channel_id\"]}>'} → `{r['type']}` (`{r['template']}`)")
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+            ch = ctx.guild.get_channel(r["channel_id"])
+            ref = ch.mention if ch else f"<#{r['channel_id']}>"
+            lines.append(f"{ref} → `{r['type']}` (`{r['template']}`)")
+        await ctx.send("\n".join(lines))
 
 
 async def setup(bot):

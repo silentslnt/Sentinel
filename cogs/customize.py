@@ -1,30 +1,18 @@
-"""Bot self-customization (avatar / banner / bio). Owner-only."""
+"""Bot self-customization (avatar / banner). Owner-only, prefix-only."""
 from __future__ import annotations
 
 from typing import Optional
 
 import aiohttp
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 
 class Customize(commands.Cog):
-    """🎨 Bot avatar / banner / bio (owner only)"""
+    """🎨 Bot avatar / banner (owner only)"""
 
     def __init__(self, bot):
         self.bot = bot
-
-    customize = app_commands.Group(
-        name="customize",
-        description="Customize the bot's profile (owner only)",
-    )
-
-    async def _owner_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.bot.owner_id:
-            await interaction.response.send_message("❌ Owner only.", ephemeral=True)
-            return False
-        return True
 
     async def _fetch_image(self, url: str) -> Optional[bytes]:
         async with aiohttp.ClientSession() as sess:
@@ -38,34 +26,44 @@ class Customize(commands.Cog):
             except (aiohttp.ClientError, TimeoutError):
                 return None
 
-    @customize.command(name="avatar", description="Change the bot's avatar")
-    @app_commands.describe(url="Direct URL to a PNG/JPG/GIF image")
-    async def avatar(self, interaction: discord.Interaction, url: str):
-        if not await self._owner_check(interaction):
-            return
-        await interaction.response.defer(ephemeral=True)
-        data = await self._fetch_image(url)
+    @commands.group(name="customize", invoke_without_command=True)
+    @commands.is_owner()
+    async def customize(self, ctx):
+        """Customize the bot's profile (owner only)."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id if ctx.guild else None)
+        await ctx.send(
+            f"🎨 **Customize**\n"
+            f"`{prefix}customize avatar <url>`\n"
+            f"`{prefix}customize banner <url>`",
+        )
+
+    @customize.command(name="avatar")
+    @commands.is_owner()
+    async def avatar(self, ctx, url: str):
+        """Change the bot's avatar."""
+        async with ctx.typing():
+            data = await self._fetch_image(url)
         if data is None:
-            return await interaction.followup.send("❌ Couldn't fetch that image.", ephemeral=True)
+            return await ctx.send("❌ Couldn't fetch that image.")
         try:
             await self.bot.user.edit(avatar=data)
         except discord.HTTPException as e:
-            return await interaction.followup.send(f"❌ {e}", ephemeral=True)
-        await interaction.followup.send("✅ Avatar updated.", ephemeral=True)
+            return await ctx.send(f"❌ {e}")
+        await ctx.send("✅ Avatar updated.")
 
-    @customize.command(name="banner", description="Change the bot's banner")
-    async def banner(self, interaction: discord.Interaction, url: str):
-        if not await self._owner_check(interaction):
-            return
-        await interaction.response.defer(ephemeral=True)
-        data = await self._fetch_image(url)
+    @customize.command(name="banner")
+    @commands.is_owner()
+    async def banner(self, ctx, url: str):
+        """Change the bot's banner."""
+        async with ctx.typing():
+            data = await self._fetch_image(url)
         if data is None:
-            return await interaction.followup.send("❌ Couldn't fetch that image.", ephemeral=True)
+            return await ctx.send("❌ Couldn't fetch that image.")
         try:
             await self.bot.user.edit(banner=data)
         except discord.HTTPException as e:
-            return await interaction.followup.send(f"❌ {e}", ephemeral=True)
-        await interaction.followup.send("✅ Banner updated.", ephemeral=True)
+            return await ctx.send(f"❌ {e}")
+        await ctx.send("✅ Banner updated.")
 
 
 async def setup(bot):

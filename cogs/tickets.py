@@ -167,44 +167,39 @@ class Tickets(commands.Cog):
         embed.set_footer(text=f"Opened by {interaction.user}")
         await channel.send(content=interaction.user.mention, embed=embed)
 
-    # ------------------- commands -------------------
+    # ------------------- admin commands (prefix-only) -------------------
 
-    @app_commands.command(name="ticketsetup", description="Configure the ticket system")
-    @app_commands.guild_only()
-    @app_commands.default_permissions(manage_guild=True)
-    @app_commands.describe(
-        category="Category where new ticket channels are created",
-        staff_role="Role granted access to all tickets",
-        transcript_channel="Where ticket transcripts are posted on close (optional)",
-    )
+    @commands.command(name="ticketsetup")
+    @commands.guild_only()
+    @commands.has_permissions(manage_guild=True)
     async def ticketsetup(
         self,
-        interaction: discord.Interaction,
+        ctx,
         category: discord.CategoryChannel,
         staff_role: discord.Role,
         transcript_channel: Optional[discord.TextChannel] = None,
     ):
+        """Configure the ticket system. Usage: ticketsetup <category> <@staff_role> [#transcript_channel]"""
         await self._upsert_config(
-            interaction.guild_id,
+            ctx.guild.id,
             category_id=category.id,
             staff_role_id=staff_role.id,
             transcript_channel_id=transcript_channel.id if transcript_channel else None,
         )
-        await interaction.response.send_message(
+        await ctx.send(
             f"✅ Tickets configured — category {category.mention}, staff {staff_role.mention}"
             + (f", transcripts in {transcript_channel.mention}." if transcript_channel else "."),
-            ephemeral=True,
         )
 
-    @app_commands.command(name="panel", description="Post the ticket panel in a channel")
-    @app_commands.guild_only()
-    @app_commands.default_permissions(manage_guild=True)
-    async def panel(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        cfg = await self._config(interaction.guild_id)
+    @commands.command(name="panel")
+    @commands.guild_only()
+    @commands.has_permissions(manage_guild=True)
+    async def panel(self, ctx, channel: discord.TextChannel):
+        """Post the ticket panel in a channel."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
+        cfg = await self._config(ctx.guild.id)
         if cfg is None or cfg.get("category_id") is None:
-            return await interaction.response.send_message(
-                "❌ Run `/ticketsetup` first.", ephemeral=True,
-            )
+            return await ctx.send(f"❌ Run `{prefix}ticketsetup` first.")
 
         embed = discord.Embed(
             title="🎫 Open a Ticket",
@@ -212,26 +207,27 @@ class Tickets(commands.Cog):
             color=discord.Color.blurple(),
         )
         view = discord.ui.View(timeout=None)
-        view.add_item(OpenTicketButton(interaction.guild_id))
+        view.add_item(OpenTicketButton(ctx.guild.id))
 
         try:
             msg = await channel.send(embed=embed, view=view)
         except discord.Forbidden:
-            return await interaction.response.send_message(f"❌ I can't send in {channel.mention}.", ephemeral=True)
+            return await ctx.send(f"❌ I can't send in {channel.mention}.")
 
         await self._upsert_config(
-            interaction.guild_id,
+            ctx.guild.id,
             panel_channel_id=channel.id,
             panel_message_id=msg.id,
         )
-        await interaction.response.send_message(f"✅ Panel posted in {channel.mention}.", ephemeral=True)
+        await ctx.send(f"✅ Panel posted in {channel.mention}.")
 
-    @app_commands.command(name="settranscript", description="Set the transcript log channel")
-    @app_commands.guild_only()
-    @app_commands.default_permissions(manage_guild=True)
-    async def settranscript(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        await self._upsert_config(interaction.guild_id, transcript_channel_id=channel.id)
-        await interaction.response.send_message(f"✅ Transcripts will go to {channel.mention}.", ephemeral=True)
+    @commands.command(name="settranscript")
+    @commands.guild_only()
+    @commands.has_permissions(manage_guild=True)
+    async def settranscript(self, ctx, channel: discord.TextChannel):
+        """Set the transcript log channel."""
+        await self._upsert_config(ctx.guild.id, transcript_channel_id=channel.id)
+        await ctx.send(f"✅ Transcripts will go to {channel.mention}.")
 
     async def _ensure_in_ticket(self, interaction: discord.Interaction) -> Optional[dict]:
         row = await self.bot.db.fetchrow(

@@ -1,20 +1,15 @@
-"""Sticky messages.
+"""Sticky messages. Prefix-only configuration.
 
 When a sticky is set on a channel, the bot re-posts the configured message
-after each new (non-bot) message — so the sticky always appears as the latest
-message in the channel. Old sticky message is deleted before the new one is sent.
-
-A small per-channel debounce avoids spamming when multiple messages arrive in quick
-succession.
+after each new (non-bot) message. Old sticky message is deleted before the new one.
+A small per-channel debounce avoids spamming when multiple messages arrive rapidly.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 from utils import embed_script
@@ -27,7 +22,7 @@ CREATE TABLE IF NOT EXISTS sticky_messages (
     guild_id        BIGINT NOT NULL,
     channel_id      BIGINT NOT NULL,
     script          TEXT NOT NULL,
-    embed_name      TEXT,            -- if non-null, render this saved embed instead of `script`
+    embed_name      TEXT,
     last_message_id BIGINT,
     PRIMARY KEY (guild_id, channel_id)
 );
@@ -41,7 +36,7 @@ class Sticky(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self._cache: dict[int, dict] = {}  # channel_id -> row
+        self._cache: dict[int, dict] = {}
         self._pending: dict[int, asyncio.Task] = {}
 
     async def cog_load(self):
@@ -55,7 +50,6 @@ class Sticky(commands.Cog):
             return
         if message.channel.id not in self._cache:
             return
-        # Debounce: if a repost is already pending for this channel, let it handle this.
         existing = self._pending.get(message.channel.id)
         if existing and not existing.done():
             return
@@ -68,7 +62,6 @@ class Sticky(commands.Cog):
             if row is None:
                 return
 
-            # Delete prior sticky if we have one.
             if row.get("last_message_id"):
                 try:
                     old = await channel.fetch_message(row["last_message_id"])
@@ -76,7 +69,6 @@ class Sticky(commands.Cog):
                 except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                     pass
 
-            # Render
             if row.get("embed_name"):
                 script = await fetch_script(self.bot, row["guild_id"], row["embed_name"])
                 view = await build_view(self.bot, row["guild_id"], row["embed_name"])
@@ -106,67 +98,70 @@ class Sticky(commands.Cog):
         finally:
             self._pending.pop(channel.id, None)
 
-    sticky = app_commands.Group(
-        name="sticky",
-        description="Sticky messages",
-        default_permissions=discord.Permissions(manage_messages=True),
-        guild_only=True,
-    )
+    # ---------------- commands ----------------
 
-    @sticky.command(name="set", description="Set a sticky message in a channel (text or embed script)")
-    @app_commands.describe(
-        channel="Channel",
-        script="Plain text or embed script",
-    )
-    async def set_(self, interaction: discord.Interaction, channel: discord.TextChannel, script: str):
+    @commands.group(name="sticky", invoke_without_command=True)
+    @commands.guild_only()
+    @commands.has_permissions(manage_messages=True)
+    async def sticky(self, ctx):
+        """Sticky messages."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
+        await ctx.send(
+            f"📌 **Sticky messages**\n"
+            f"`{prefix}sticky set <#channel> <text or embed script>`\n"
+            f"`{prefix}sticky setembed <#channel> <embed_name>`\n"
+            f"`{prefix}sticky remove <#channel>`\n"
+            f"`{prefix}sticky view`",
+        )
+
+    @sticky.command(name="set")
+    async def set_(self, ctx, channel: discord.TextChannel, *, script: str):
+        """Set a sticky message in a channel (text or embed script)."""
         await self.bot.db.execute(
             """INSERT INTO sticky_messages (guild_id, channel_id, script, embed_name, last_message_id)
                VALUES ($1, $2, $3, NULL, NULL)
                ON CONFLICT (guild_id, channel_id) DO UPDATE
                SET script=EXCLUDED.script, embed_name=NULL, last_message_id=NULL""",
-            interaction.guild_id, channel.id, script,
+            ctx.guild.id, channel.id, script,
         )
         self._cache[channel.id] = {
-            "guild_id": interaction.guild_id,
+            "guild_id": ctx.guild.id,
             "channel_id": channel.id,
             "script": script,
             "embed_name": None,
             "last_message_id": None,
         }
-        await interaction.response.send_message(f"📌 Sticky set in {channel.mention}.", ephemeral=True)
-        # Trigger an immediate post so the user sees it.
+        await ctx.send(f"📌 Sticky set in {channel.mention}.")
         self._pending[channel.id] = asyncio.create_task(self._repost(channel))
 
-    @sticky.command(name="setembed", description="Set a sticky message in a channel using a saved embed")
-    async def set_embed(self, interaction: discord.Interaction, channel: discord.TextChannel, embed_name: str):
-        if await fetch_script(self.bot, interaction.guild_id, embed_name) is None:
-            return await interaction.response.send_message(
-                f"❌ No saved embed named `{embed_name}`.", ephemeral=True,
-            )
+    @sticky.command(name="setembed")
+    async def set_embed(self, ctx, channel: discord.TextChannel, embed_name: str):
+        """Set a sticky message in a channel using a saved embed."""
+        if await fetch_script(self.bot, ctx.guild.id, embed_name) is None:
+            return await ctx.send(f"❌ No saved embed named `{embed_name}`.")
         await self.bot.db.execute(
             """INSERT INTO sticky_messages (guild_id, channel_id, script, embed_name, last_message_id)
                VALUES ($1, $2, '', $3, NULL)
                ON CONFLICT (guild_id, channel_id) DO UPDATE
                SET script='', embed_name=EXCLUDED.embed_name, last_message_id=NULL""",
-            interaction.guild_id, channel.id, embed_name,
+            ctx.guild.id, channel.id, embed_name,
         )
         self._cache[channel.id] = {
-            "guild_id": interaction.guild_id,
+            "guild_id": ctx.guild.id,
             "channel_id": channel.id,
             "script": "",
             "embed_name": embed_name,
             "last_message_id": None,
         }
-        await interaction.response.send_message(
-            f"📌 Sticky embed `{embed_name}` set in {channel.mention}.", ephemeral=True,
-        )
+        await ctx.send(f"📌 Sticky embed `{embed_name}` set in {channel.mention}.")
         self._pending[channel.id] = asyncio.create_task(self._repost(channel))
 
-    @sticky.command(name="remove", description="Remove the sticky from a channel")
-    async def remove(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    @sticky.command(name="remove")
+    async def remove(self, ctx, channel: discord.TextChannel):
+        """Remove the sticky from a channel."""
         row = self._cache.get(channel.id)
         if row is None:
-            return await interaction.response.send_message("ℹ️ No sticky in that channel.", ephemeral=True)
+            return await ctx.send("ℹ️ No sticky in that channel.")
         if row.get("last_message_id"):
             try:
                 old = await channel.fetch_message(row["last_message_id"])
@@ -175,29 +170,30 @@ class Sticky(commands.Cog):
                 pass
         await self.bot.db.execute(
             "DELETE FROM sticky_messages WHERE guild_id=$1 AND channel_id=$2",
-            interaction.guild_id, channel.id,
+            ctx.guild.id, channel.id,
         )
         self._cache.pop(channel.id, None)
-        await interaction.response.send_message(f"✅ Sticky removed from {channel.mention}.", ephemeral=True)
+        await ctx.send(f"✅ Sticky removed from {channel.mention}.")
 
-    @sticky.command(name="view", description="Show all stickies in this server")
-    async def view(self, interaction: discord.Interaction):
+    @sticky.command(name="view")
+    async def view(self, ctx):
+        """Show all stickies in this server."""
         rows = await self.bot.db.fetch(
             "SELECT channel_id, script, embed_name FROM sticky_messages WHERE guild_id=$1",
-            interaction.guild_id,
+            ctx.guild.id,
         )
         if not rows:
-            return await interaction.response.send_message("ℹ️ No stickies configured.", ephemeral=True)
+            return await ctx.send("ℹ️ No stickies configured.")
         lines = []
         for r in rows:
-            ch = interaction.guild.get_channel(r["channel_id"])
+            ch = ctx.guild.get_channel(r["channel_id"])
             ref = ch.mention if ch else f"<#{r['channel_id']}>"
             if r["embed_name"]:
                 lines.append(f"{ref} → embed `{r['embed_name']}`")
             else:
                 preview = (r["script"][:60] + "…") if len(r["script"]) > 60 else r["script"]
                 lines.append(f"{ref} → `{preview}`")
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+        await ctx.send("\n".join(lines))
 
 
 async def setup(bot):

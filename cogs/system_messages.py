@@ -2,6 +2,8 @@
 
 Multiple messages per event are supported (each with its own channel + script).
 Each message can self-destruct after N seconds (5–60).
+
+Prefix-only commands.
 """
 from __future__ import annotations
 
@@ -10,7 +12,6 @@ import logging
 from typing import Optional
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 from utils import embed_script
@@ -32,24 +33,19 @@ CREATE INDEX IF NOT EXISTS system_messages_lookup
 """
 
 EVENTS = ("welcome", "goodbye", "boost")
-EVENT_CHOICES = [app_commands.Choice(name=e, value=e) for e in EVENTS]
 
 
 async def _dispatch(bot, event: str, member: discord.Member):
     rows = await bot.db.fetch(
         "SELECT * FROM system_messages WHERE guild_id=$1 AND event=$2",
-        member.guild.id,
-        event,
+        member.guild.id, event,
     )
     for row in rows:
         channel = member.guild.get_channel(row["channel_id"])
         if channel is None:
             continue
         rendered = embed_script.render(
-            row["script"],
-            user=member,
-            guild=member.guild,
-            channel=channel,
+            row["script"], user=member, guild=member.guild, channel=channel,
         )
         if rendered.is_empty:
             continue
@@ -98,91 +94,106 @@ class SystemMessages(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
-        # Booster role gained.
         if before.premium_since is None and after.premium_since is not None:
             await _dispatch(self.bot, "boost", after)
 
     # ---------------- commands ----------------
 
-    sysmsg = app_commands.Group(
-        name="systemmessage",
-        description="Configure welcome / goodbye / boost messages",
-        default_permissions=discord.Permissions(manage_guild=True),
-        guild_only=True,
-    )
+    @commands.group(name="systemmessage", aliases=["sysmsg"], invoke_without_command=True)
+    @commands.guild_only()
+    @commands.has_permissions(manage_guild=True)
+    async def sysmsg(self, ctx):
+        """Welcome / goodbye / boost messages."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
+        await ctx.send(
+            f"💬 **System messages** — events: `welcome`, `goodbye`, `boost`\n"
+            f"`{prefix}systemmessage add <event> <#channel> [self_destruct=N] | <script>`\n"
+            f"`{prefix}systemmessage remove <event> <#channel>`\n"
+            f"`{prefix}systemmessage list`\n"
+            f"`{prefix}systemmessage test <event>`",
+        )
 
-    @sysmsg.command(name="add", description="Add a system message")
-    @app_commands.choices(event=EVENT_CHOICES)
-    @app_commands.describe(
-        event="When to send",
-        channel="Where to send",
-        script="Embed script (or plain text). Supports {user}, {guild.name}, etc.",
-        self_destruct="Delete after N seconds (5-60). Omit to keep forever.",
-    )
-    async def add(
-        self,
-        interaction: discord.Interaction,
-        event: app_commands.Choice[str],
-        channel: discord.TextChannel,
-        script: str,
-        self_destruct: Optional[app_commands.Range[int, 5, 60]] = None,
-    ):
+    @sysmsg.command(name="add")
+    async def add(self, ctx, event: str, channel: discord.TextChannel, *, body: str):
+        """Add a system message. body format: [self_destruct=N] | <script>"""
+        event = event.lower()
+        if event not in EVENTS:
+            return await ctx.send(f"❌ Event must be one of: {', '.join(EVENTS)}")
+
+        self_destruct: Optional[int] = None
+        if "|" in body:
+            head, script = body.split("|", 1)
+            head = head.strip()
+            script = script.strip()
+            if head.lower().startswith("self_destruct="):
+                try:
+                    self_destruct = int(head.split("=", 1)[1])
+                except ValueError:
+                    return await ctx.send("❌ self_destruct must be an integer 5–60.")
+                if self_destruct < 5 or self_destruct > 60:
+                    return await ctx.send("❌ self_destruct must be 5–60 seconds.")
+            elif head:
+                return await ctx.send("❌ Unknown option before `|`. Only `self_destruct=N` is supported.")
+        else:
+            script = body.strip()
+
+        if not script:
+            return await ctx.send("❌ Script can't be empty.")
+
         await self.bot.db.execute(
             "INSERT INTO system_messages (guild_id, event, channel_id, script, self_destruct) "
             "VALUES ($1,$2,$3,$4,$5)",
-            interaction.guild_id, event.value, channel.id, script, self_destruct,
+            ctx.guild.id, event, channel.id, script, self_destruct,
         )
-        await interaction.response.send_message(
-            f"✅ Added a **{event.value}** message in {channel.mention}"
+        await ctx.send(
+            f"✅ Added a **{event}** message in {channel.mention}"
             + (f" (auto-deletes after {self_destruct}s)." if self_destruct else "."),
-            ephemeral=True,
         )
 
-    @sysmsg.command(name="remove", description="Remove all system messages of an event in a channel")
-    @app_commands.choices(event=EVENT_CHOICES)
-    async def remove(
-        self,
-        interaction: discord.Interaction,
-        event: app_commands.Choice[str],
-        channel: discord.TextChannel,
-    ):
+    @sysmsg.command(name="remove")
+    async def remove(self, ctx, event: str, channel: discord.TextChannel):
+        """Remove all system messages of an event in a channel."""
+        event = event.lower()
+        if event not in EVENTS:
+            return await ctx.send(f"❌ Event must be one of: {', '.join(EVENTS)}")
         result = await self.bot.db.execute(
             "DELETE FROM system_messages WHERE guild_id=$1 AND event=$2 AND channel_id=$3",
-            interaction.guild_id, event.value, channel.id,
+            ctx.guild.id, event, channel.id,
         )
-        # asyncpg execute() returns "DELETE N" — strip prefix
         n = int(result.split()[-1]) if result and result.startswith("DELETE") else 0
-        await interaction.response.send_message(
-            f"✅ Removed {n} **{event.value}** message(s) from {channel.mention}.",
-            ephemeral=True,
-        )
+        await ctx.send(f"✅ Removed {n} **{event}** message(s) from {channel.mention}.")
 
-    @sysmsg.command(name="list", description="List all configured system messages")
-    async def list_(self, interaction: discord.Interaction):
+    @sysmsg.command(name="list")
+    async def list_(self, ctx):
+        """List all configured system messages."""
         rows = await self.bot.db.fetch(
             "SELECT id, event, channel_id, self_destruct, script FROM system_messages "
             "WHERE guild_id=$1 ORDER BY event, id",
-            interaction.guild_id,
+            ctx.guild.id,
         )
         if not rows:
-            return await interaction.response.send_message("ℹ️ None configured.", ephemeral=True)
+            return await ctx.send("ℹ️ None configured.")
         embed = discord.Embed(title="System Messages", color=discord.Color.blurple())
         for r in rows[:25]:
-            ch = interaction.guild.get_channel(r["channel_id"])
+            ch = ctx.guild.get_channel(r["channel_id"])
             preview = (r["script"][:80] + "…") if len(r["script"]) > 80 else r["script"]
             sd = f" · ⏲ {r['self_destruct']}s" if r["self_destruct"] else ""
+            ch_label = ch.mention if ch else f"<#{r['channel_id']}>"
             embed.add_field(
-                name=f"#{r['id']} · {r['event']} · {ch.mention if ch else f'<#{r[\"channel_id\"]}>'}{sd}",
+                name=f"#{r['id']} · {r['event']} · {ch_label}{sd}",
                 value=f"`{preview}`",
                 inline=False,
             )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed)
 
-    @sysmsg.command(name="test", description="Trigger a system message as if it just fired")
-    @app_commands.choices(event=EVENT_CHOICES)
-    async def test(self, interaction: discord.Interaction, event: app_commands.Choice[str]):
-        await interaction.response.send_message(f"⏳ Firing **{event.value}**…", ephemeral=True)
-        await _dispatch(self.bot, event.value, interaction.user)
+    @sysmsg.command(name="test")
+    async def test(self, ctx, event: str):
+        """Trigger a system message as if it just fired (uses you as target)."""
+        event = event.lower()
+        if event not in EVENTS:
+            return await ctx.send(f"❌ Event must be one of: {', '.join(EVENTS)}")
+        await ctx.send(f"⏳ Firing **{event}**…")
+        await _dispatch(self.bot, event, ctx.author)
 
 
 async def setup(bot):

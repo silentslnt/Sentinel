@@ -2,6 +2,8 @@
 
 When a member starts boosting (premium_since transitions from None → set), the
 configured award role is granted. When they stop boosting, it's revoked.
+
+Prefix-only commands.
 """
 from __future__ import annotations
 
@@ -9,7 +11,6 @@ import logging
 from typing import Optional
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 log = logging.getLogger("sentinel.booster")
@@ -42,7 +43,6 @@ class Booster(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
-        # Boost gained.
         if before.premium_since is None and after.premium_since is not None:
             role = self._award_role(after)
             if role and role < after.guild.me.top_role and role not in after.roles:
@@ -50,7 +50,6 @@ class Booster(commands.Cog):
                     await after.add_roles(role, reason="Booster award role")
                 except (discord.Forbidden, discord.HTTPException) as e:
                     log.warning("booster grant failed for %s: %s", after, e)
-        # Boost lost.
         elif before.premium_since is not None and after.premium_since is None:
             role = self._award_role(after)
             if role and role in after.roles:
@@ -59,58 +58,69 @@ class Booster(commands.Cog):
                 except (discord.Forbidden, discord.HTTPException) as e:
                     log.warning("booster revoke failed for %s: %s", after, e)
 
-    boosterrole = app_commands.Group(
-        name="boosterrole",
-        description="Booster auto-role configuration",
-        default_permissions=discord.Permissions(manage_roles=True),
-        guild_only=True,
-    )
+    # ---------------- commands ----------------
 
-    award = app_commands.Group(name="award", description="Manage the booster award role", parent=boosterrole)
+    @commands.group(name="boosterrole", aliases=["br"], invoke_without_command=True)
+    @commands.guild_only()
+    @commands.has_permissions(manage_roles=True)
+    async def boosterrole(self, ctx):
+        """Booster role configuration."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
+        await ctx.send(
+            f"💎 **Booster role**\n"
+            f"`{prefix}boosterrole award set @role`\n"
+            f"`{prefix}boosterrole award remove`\n"
+            f"`{prefix}boosterrole award view`\n"
+            f"`{prefix}boosterrole award sync`",
+        )
 
-    @award.command(name="set", description="Set the role granted automatically when a member boosts")
-    async def award_set(self, interaction: discord.Interaction, role: discord.Role):
-        if role >= interaction.guild.me.top_role:
-            return await interaction.response.send_message(
-                "❌ That role is above my highest role — I can't manage it.", ephemeral=True,
-            )
+    @boosterrole.group(name="award", invoke_without_command=True)
+    async def award(self, ctx):
+        """Manage the booster award role."""
+        await self.boosterrole(ctx)
+
+    @award.command(name="set")
+    async def award_set(self, ctx, role: discord.Role):
+        """Set the role granted automatically when a member boosts."""
+        if role >= ctx.guild.me.top_role:
+            return await ctx.send("❌ That role is above my highest role — I can't manage it.")
         await self.bot.db.execute(
             """INSERT INTO booster_config (guild_id, award_role_id) VALUES ($1, $2)
                ON CONFLICT (guild_id) DO UPDATE SET award_role_id = EXCLUDED.award_role_id""",
-            interaction.guild_id, role.id,
+            ctx.guild.id, role.id,
         )
-        self._cache[interaction.guild_id] = role.id
-        await interaction.response.send_message(f"✅ Boosters will now receive {role.mention}.", ephemeral=True)
+        self._cache[ctx.guild.id] = role.id
+        await ctx.send(f"✅ Boosters will now receive {role.mention}.")
 
-    @award.command(name="remove", description="Stop auto-granting any role on boost")
-    async def award_remove(self, interaction: discord.Interaction):
+    @award.command(name="remove")
+    async def award_remove(self, ctx):
+        """Stop auto-granting any role on boost."""
         await self.bot.db.execute(
             "UPDATE booster_config SET award_role_id = NULL WHERE guild_id = $1",
-            interaction.guild_id,
+            ctx.guild.id,
         )
-        self._cache[interaction.guild_id] = None
-        await interaction.response.send_message("✅ Booster award role unset.", ephemeral=True)
+        self._cache[ctx.guild.id] = None
+        await ctx.send("✅ Booster award role unset.")
 
-    @award.command(name="view", description="View the current booster award role")
-    async def award_view(self, interaction: discord.Interaction):
-        rid = self._cache.get(interaction.guild_id)
-        role = interaction.guild.get_role(rid) if rid else None
-        await interaction.response.send_message(
-            f"Current booster award role: {role.mention if role else '—'}", ephemeral=True,
-        )
+    @award.command(name="view")
+    async def award_view(self, ctx):
+        """View the current booster award role."""
+        rid = self._cache.get(ctx.guild.id)
+        role = ctx.guild.get_role(rid) if rid else None
+        await ctx.send(f"Current booster award role: {role.mention if role else '—'}")
 
-    @award.command(name="sync", description="Grant/revoke the award role for current boosters now")
-    async def award_sync(self, interaction: discord.Interaction):
-        rid = self._cache.get(interaction.guild_id)
+    @award.command(name="sync")
+    async def award_sync(self, ctx):
+        """Grant/revoke the award role for current boosters now."""
+        rid = self._cache.get(ctx.guild.id)
         if rid is None:
-            return await interaction.response.send_message("❌ No award role configured.", ephemeral=True)
-        role = interaction.guild.get_role(rid)
-        if role is None or role >= interaction.guild.me.top_role:
-            return await interaction.response.send_message("❌ Role missing or above my top role.", ephemeral=True)
-
-        await interaction.response.send_message("⏳ Syncing…", ephemeral=True)
+            return await ctx.send("❌ No award role configured.")
+        role = ctx.guild.get_role(rid)
+        if role is None or role >= ctx.guild.me.top_role:
+            return await ctx.send("❌ Role missing or above my top role.")
+        msg = await ctx.send("⏳ Syncing…")
         granted = revoked = 0
-        for member in interaction.guild.members:
+        for member in ctx.guild.members:
             try:
                 if member.premium_since and role not in member.roles:
                     await member.add_roles(role, reason="Booster sync")
@@ -120,9 +130,7 @@ class Booster(commands.Cog):
                     revoked += 1
             except (discord.Forbidden, discord.HTTPException):
                 continue
-        await interaction.followup.send(
-            f"✅ Synced — granted {granted}, revoked {revoked}.", ephemeral=True,
-        )
+        await msg.edit(content=f"✅ Synced — granted {granted}, revoked {revoked}.")
 
 
 async def setup(bot):

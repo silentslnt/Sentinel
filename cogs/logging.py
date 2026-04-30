@@ -9,13 +9,11 @@ import logging as pylog
 from typing import Optional
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 log = pylog.getLogger("sentinel.logging")
 
 EVENT_CATEGORIES = ("messages", "members", "roles", "channels", "invites", "emojis", "voice")
-EVENT_CHOICES = [app_commands.Choice(name=e, value=e) for e in EVENT_CATEGORIES]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS log_routes (
@@ -239,75 +237,91 @@ class Logging(commands.Cog):
 
     # ---------------- commands ----------------
 
-    log_group = app_commands.Group(
-        name="log",
-        description="Configure event logging",
-        default_permissions=discord.Permissions(manage_guild=True),
-        guild_only=True,
-    )
+    @commands.group(name="log", invoke_without_command=True)
+    @commands.guild_only()
+    @commands.has_permissions(manage_guild=True)
+    async def log_group(self, ctx):
+        """Event logging configuration."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
+        events = ", ".join(f"`{e}`" for e in EVENT_CATEGORIES)
+        await ctx.send(
+            f"📝 **Logging** — events: {events}\n"
+            f"`{prefix}log add <event> <#channel>`\n"
+            f"`{prefix}log remove <event>`\n"
+            f"`{prefix}log ignore <user_or_channel>`\n"
+            f"`{prefix}log unignore <user_or_channel>`\n"
+            f"`{prefix}log list`",
+        )
 
-    @log_group.command(name="add", description="Route an event category to a channel")
-    @app_commands.choices(event=EVENT_CHOICES)
-    async def log_add(self, interaction: discord.Interaction, event: app_commands.Choice[str], channel: discord.TextChannel):
+    @log_group.command(name="add")
+    async def log_add(self, ctx, event: str, channel: discord.TextChannel):
+        """Route an event category to a channel."""
+        event = event.lower()
+        if event not in EVENT_CATEGORIES:
+            return await ctx.send(f"❌ Event must be one of: {', '.join(EVENT_CATEGORIES)}")
         await self.bot.db.execute(
             """INSERT INTO log_routes (guild_id, event, channel_id) VALUES ($1, $2, $3)
                ON CONFLICT (guild_id, event) DO UPDATE SET channel_id = EXCLUDED.channel_id""",
-            interaction.guild_id, event.value, channel.id,
+            ctx.guild.id, event, channel.id,
         )
         await self._refresh()
-        await interaction.response.send_message(
-            f"✅ `{event.value}` events will log in {channel.mention}.", ephemeral=True,
-        )
+        await ctx.send(f"✅ `{event}` events will log in {channel.mention}.")
 
-    @log_group.command(name="remove", description="Stop logging an event category")
-    @app_commands.choices(event=EVENT_CHOICES)
-    async def log_remove(self, interaction: discord.Interaction, event: app_commands.Choice[str]):
+    @log_group.command(name="remove")
+    async def log_remove(self, ctx, event: str):
+        """Stop logging an event category."""
+        event = event.lower()
+        if event not in EVENT_CATEGORIES:
+            return await ctx.send(f"❌ Event must be one of: {', '.join(EVENT_CATEGORIES)}")
         await self.bot.db.execute(
             "DELETE FROM log_routes WHERE guild_id=$1 AND event=$2",
-            interaction.guild_id, event.value,
+            ctx.guild.id, event,
         )
         await self._refresh()
-        await interaction.response.send_message(f"✅ Removed `{event.value}` route.", ephemeral=True)
+        await ctx.send(f"✅ Removed `{event}` route.")
 
-    @log_group.command(name="ignore", description="Ignore a member or channel from logging")
-    async def log_ignore(self, interaction: discord.Interaction, target: str):
+    @log_group.command(name="ignore")
+    async def log_ignore(self, ctx, target: str):
+        """Ignore a member or channel from logging."""
         try:
             target_id = int(target.strip("<@#!&>"))
         except ValueError:
-            return await interaction.response.send_message("❌ Provide a user/channel mention or ID.", ephemeral=True)
+            return await ctx.send("❌ Provide a user/channel mention or ID.")
         await self.bot.db.execute(
             "INSERT INTO log_ignores (guild_id, target_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            interaction.guild_id, target_id,
+            ctx.guild.id, target_id,
         )
         await self._refresh()
-        await interaction.response.send_message(f"✅ Ignoring `{target_id}`.", ephemeral=True)
+        await ctx.send(f"✅ Ignoring `{target_id}`.")
 
-    @log_group.command(name="unignore", description="Stop ignoring a member or channel")
-    async def log_unignore(self, interaction: discord.Interaction, target: str):
+    @log_group.command(name="unignore")
+    async def log_unignore(self, ctx, target: str):
+        """Stop ignoring a member or channel."""
         try:
             target_id = int(target.strip("<@#!&>"))
         except ValueError:
-            return await interaction.response.send_message("❌ Provide a user/channel mention or ID.", ephemeral=True)
+            return await ctx.send("❌ Provide a user/channel mention or ID.")
         await self.bot.db.execute(
             "DELETE FROM log_ignores WHERE guild_id=$1 AND target_id=$2",
-            interaction.guild_id, target_id,
+            ctx.guild.id, target_id,
         )
         await self._refresh()
-        await interaction.response.send_message(f"✅ No longer ignoring `{target_id}`.", ephemeral=True)
+        await ctx.send(f"✅ No longer ignoring `{target_id}`.")
 
-    @log_group.command(name="list", description="Show current log routes")
-    async def log_list(self, interaction: discord.Interaction):
-        routes = self._routes.get(interaction.guild_id, {})
-        ignored = self._ignored.get(interaction.guild_id, set())
+    @log_group.command(name="list")
+    async def log_list(self, ctx):
+        """Show current log routes."""
+        routes = self._routes.get(ctx.guild.id, {})
+        ignored = self._ignored.get(ctx.guild.id, set())
         if not routes and not ignored:
-            return await interaction.response.send_message("ℹ️ No logging configured.", ephemeral=True)
+            return await ctx.send("ℹ️ No logging configured.")
         lines = []
         for ev, cid in routes.items():
-            ch = interaction.guild.get_channel(cid)
+            ch = ctx.guild.get_channel(cid)
             lines.append(f"• `{ev}` → {ch.mention if ch else f'<#{cid}>'}")
         if ignored:
             lines.append("\n**Ignored:** " + ", ".join(f"`{i}`" for i in ignored))
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+        await ctx.send("\n".join(lines))
 
 
 async def setup(bot):

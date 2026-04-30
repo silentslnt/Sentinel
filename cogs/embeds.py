@@ -14,7 +14,6 @@ import re
 from typing import Optional
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 from utils import embed_script
@@ -186,22 +185,30 @@ class Embeds(commands.Cog):
         # Register dynamic item handlers globally so saved embeds keep working after restarts.
         self.bot.add_dynamic_items(RoleToggleButton, OpenEmbedButton)
 
-    embed = app_commands.Group(
-        name="embed",
-        description="Embed builder",
-        default_permissions=discord.Permissions(manage_messages=True),
-        guild_only=True,
-    )
+    @commands.group(name="embed", invoke_without_command=True)
+    @commands.guild_only()
+    @commands.has_permissions(manage_messages=True)
+    async def embed(self, ctx):
+        """Embed builder & library."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
+        await ctx.send(
+            f"🧱 **Embed builder**\n"
+            f"`{prefix}embed create <name>` · open the guided builder UI\n"
+            f"`{prefix}embed save <name> <script>` · save from raw script\n"
+            f"`{prefix}embed list` · list saved embeds\n"
+            f"`{prefix}embed preview <name>` · preview\n"
+            f"`{prefix}embed send <name> <#channel>`\n"
+            f"`{prefix}embed edit <name> <new_script>`\n"
+            f"`{prefix}embed delete <name>`\n"
+            f"`{prefix}embed raw <name>` · show script\n"
+            f"\n**Buttons:** `{prefix}embed button addlink|addrole|addopen|list|remove`",
+        )
 
-    button = app_commands.Group(name="button", description="Manage embed buttons", parent=embed)
-
-    @embed.command(name="create", description="Open the guided embed builder")
-    @app_commands.describe(name="Short name to save under (lowercase letters, digits, _ and - only)")
-    async def create(self, interaction: discord.Interaction, name: str):
+    @embed.command(name="create")
+    async def create(self, ctx, name: str):
+        """Open the guided embed builder."""
         if not NAME_RE.match(name):
-            return await interaction.response.send_message(
-                "❌ Name must be 1–32 chars: lowercase letters, digits, `_`, `-`.", ephemeral=True,
-            )
+            return await ctx.send("❌ Name must be 1–32 chars: lowercase letters, digits, `_`, `-`.")
 
         async def on_save(modal_interaction: discord.Interaction, save_name: str, script: str) -> bool:
             await self.bot.db.execute(
@@ -209,72 +216,69 @@ class Embeds(commands.Cog):
                    ON CONFLICT (guild_id, name) DO UPDATE SET script = EXCLUDED.script""",
                 modal_interaction.guild_id, save_name, script,
             )
+            prefix = self.bot.guild_config.get_prefix(modal_interaction.guild_id)
             await modal_interaction.response.send_message(
-                f"✅ Saved as `{save_name}`. Send it with `/embed send name:{save_name} channel:#…`.",
+                f"✅ Saved as `{save_name}`. Send with `{prefix}embed send {save_name} #channel`.",
                 ephemeral=True,
             )
             return True
 
-        view = EmbedBuilderView(interaction.user.id, name=name, on_save=on_save)
-        await interaction.response.send_message(
+        view = EmbedBuilderView(ctx.author.id, name=name, on_save=on_save)
+        view.message = await ctx.send(
             content=f"🧱 Building embed `{name}`. Click a button below to edit a section. "
                     f"The preview updates live; click **✅ Save** when you're done.",
             embed=view.state.to_preview_embed(),
             view=view,
         )
-        view.message = await interaction.original_response()
 
-    @embed.command(name="save", description="Save (or overwrite) an embed from a script")
-    @app_commands.describe(
-        name="Short name",
-        script="Embed script (e.g. {title: hi}$v{description: hello})",
-    )
-    async def save(self, interaction: discord.Interaction, name: str, script: str):
+    @embed.command(name="save")
+    async def save(self, ctx, name: str, *, script: str):
+        """Save (or overwrite) an embed from a raw script."""
         if not NAME_RE.match(name):
-            return await interaction.response.send_message(
-                "❌ Name must be 1–32 chars: lowercase letters, digits, `_`, `-`.", ephemeral=True,
-            )
+            return await ctx.send("❌ Name must be 1–32 chars: lowercase letters, digits, `_`, `-`.")
         await self.bot.db.execute(
             """INSERT INTO saved_embeds (guild_id, name, script) VALUES ($1, $2, $3)
                ON CONFLICT (guild_id, name) DO UPDATE SET script = EXCLUDED.script""",
-            interaction.guild_id, name, script,
+            ctx.guild.id, name, script,
         )
-        await interaction.response.send_message(f"✅ Saved embed `{name}`.", ephemeral=True)
+        await ctx.send(f"✅ Saved embed `{name}`.")
 
-    @embed.command(name="list", description="List all saved embeds")
-    async def list_(self, interaction: discord.Interaction):
+    @embed.command(name="list")
+    async def list_(self, ctx):
+        """List all saved embeds."""
         rows = await self.bot.db.fetch(
             "SELECT name FROM saved_embeds WHERE guild_id=$1 ORDER BY name",
-            interaction.guild_id,
+            ctx.guild.id,
         )
         if not rows:
-            return await interaction.response.send_message("ℹ️ No saved embeds yet.", ephemeral=True)
+            return await ctx.send("ℹ️ No saved embeds yet.")
         names = ", ".join(f"`{r['name']}`" for r in rows[:100])
         embed = discord.Embed(title="Saved Embeds", description=names, color=discord.Color.blurple())
         embed.set_footer(text=f"{len(rows)} total")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed)
 
-    @embed.command(name="preview", description="Preview a saved embed (only you can see it)")
-    async def preview(self, interaction: discord.Interaction, name: str):
-        script = await fetch_script(self.bot, interaction.guild_id, name)
+    @embed.command(name="preview")
+    async def preview(self, ctx, name: str):
+        """Preview a saved embed."""
+        script = await fetch_script(self.bot, ctx.guild.id, name)
         if script is None:
-            return await interaction.response.send_message(f"❌ No embed named `{name}`.", ephemeral=True)
-        rendered = embed_script.render(script, user=interaction.user, guild=interaction.guild, channel=interaction.channel)
-        view = await build_view(self.bot, interaction.guild_id, name)
-        await interaction.response.send_message(
+            return await ctx.send(f"❌ No embed named `{name}`.")
+        rendered = embed_script.render(script, user=ctx.author, guild=ctx.guild, channel=ctx.channel)
+        view = await build_view(self.bot, ctx.guild.id, name)
+        await ctx.send(
             content=rendered.content or f"_Preview: `{name}`_",
             embed=rendered.embed,
             view=view or discord.utils.MISSING,
-            ephemeral=True,
         )
 
-    @embed.command(name="send", description="Send a saved embed to a channel")
-    async def send(self, interaction: discord.Interaction, name: str, channel: discord.TextChannel):
-        script = await fetch_script(self.bot, interaction.guild_id, name)
+    @embed.command(name="send")
+    async def send(self, ctx, name: str, channel: discord.TextChannel):
+        """Send a saved embed to a channel."""
+        script = await fetch_script(self.bot, ctx.guild.id, name)
         if script is None:
-            return await interaction.response.send_message(f"❌ No embed named `{name}`.", ephemeral=True)
-        rendered = embed_script.render(script, user=interaction.user, guild=interaction.guild, channel=channel)
-        view = await build_view(self.bot, interaction.guild_id, name)
+            return await ctx.send(f"❌ No embed named `{name}`.")
+        rendered = embed_script.render(script, user=ctx.author, guild=ctx.guild, channel=channel)
+        view = await build_view(self.bot, ctx.guild.id, name)
         try:
             await channel.send(
                 content=rendered.content,
@@ -282,101 +286,104 @@ class Embeds(commands.Cog):
                 view=view or discord.utils.MISSING,
             )
         except discord.Forbidden:
-            return await interaction.response.send_message(f"❌ I can't send in {channel.mention}.", ephemeral=True)
-        await interaction.response.send_message(f"✅ Sent `{name}` to {channel.mention}.", ephemeral=True)
+            return await ctx.send(f"❌ I can't send in {channel.mention}.")
+        await ctx.send(f"✅ Sent `{name}` to {channel.mention}.")
 
-    @embed.command(name="edit", description="Replace the script of a saved embed")
-    async def edit(self, interaction: discord.Interaction, name: str, script: str):
-        existed = await fetch_script(self.bot, interaction.guild_id, name)
+    @embed.command(name="edit")
+    async def edit(self, ctx, name: str, *, script: str):
+        """Replace the script of a saved embed."""
+        existed = await fetch_script(self.bot, ctx.guild.id, name)
         if existed is None:
-            return await interaction.response.send_message(f"❌ No embed named `{name}`.", ephemeral=True)
+            return await ctx.send(f"❌ No embed named `{name}`.")
         await self.bot.db.execute(
             "UPDATE saved_embeds SET script=$3 WHERE guild_id=$1 AND name=$2",
-            interaction.guild_id, name, script,
+            ctx.guild.id, name, script,
         )
-        await interaction.response.send_message(f"✅ Updated `{name}`.", ephemeral=True)
+        await ctx.send(f"✅ Updated `{name}`.")
 
-    @embed.command(name="delete", description="Delete a saved embed and all its buttons")
-    async def delete(self, interaction: discord.Interaction, name: str):
+    @embed.command(name="delete")
+    async def delete(self, ctx, name: str):
+        """Delete a saved embed and all its buttons."""
         await self.bot.db.execute(
             "DELETE FROM embed_buttons WHERE guild_id=$1 AND embed_name=$2",
-            interaction.guild_id, name,
+            ctx.guild.id, name,
         )
         result = await self.bot.db.execute(
             "DELETE FROM saved_embeds WHERE guild_id=$1 AND name=$2",
-            interaction.guild_id, name,
+            ctx.guild.id, name,
         )
         n = int(result.split()[-1]) if result and result.startswith("DELETE") else 0
         if n == 0:
-            return await interaction.response.send_message(f"❌ No embed named `{name}`.", ephemeral=True)
-        await interaction.response.send_message(f"✅ Deleted `{name}`.", ephemeral=True)
+            return await ctx.send(f"❌ No embed named `{name}`.")
+        await ctx.send(f"✅ Deleted `{name}`.")
 
-    @embed.command(name="raw", description="Show the raw script for a saved embed")
-    async def raw(self, interaction: discord.Interaction, name: str):
-        script = await fetch_script(self.bot, interaction.guild_id, name)
+    @embed.command(name="raw")
+    async def raw(self, ctx, name: str):
+        """Show the raw script for a saved embed."""
+        script = await fetch_script(self.bot, ctx.guild.id, name)
         if script is None:
-            return await interaction.response.send_message(f"❌ No embed named `{name}`.", ephemeral=True)
-        await interaction.response.send_message(f"```\n{script[:1900]}\n```", ephemeral=True)
+            return await ctx.send(f"❌ No embed named `{name}`.")
+        await ctx.send(f"```\n{script[:1900]}\n```")
 
     # ---- buttons ----
 
-    @button.command(name="addlink", description="Add a link button to a saved embed")
-    @app_commands.describe(name="Embed name", label="Button label", url="URL to open")
-    async def add_link(self, interaction: discord.Interaction, name: str, label: str, url: str):
-        if await fetch_script(self.bot, interaction.guild_id, name) is None:
-            return await interaction.response.send_message(f"❌ No embed named `{name}`.", ephemeral=True)
-        await self._add_button(interaction.guild_id, name, "link", "blurple", label, url)
-        await interaction.response.send_message(f"✅ Added link button `{label}` → {url}", ephemeral=True)
+    @embed.group(name="button", invoke_without_command=True)
+    async def button(self, ctx):
+        """Manage embed buttons."""
+        await self.embed(ctx)
 
-    @button.command(name="addrole", description="Add a role-toggle button to a saved embed")
-    @app_commands.describe(name="Embed name", label="Button label", role="Role to toggle on click")
-    async def add_role(self, interaction: discord.Interaction, name: str, label: str, role: discord.Role):
-        if await fetch_script(self.bot, interaction.guild_id, name) is None:
-            return await interaction.response.send_message(f"❌ No embed named `{name}`.", ephemeral=True)
-        if role >= interaction.guild.me.top_role:
-            return await interaction.response.send_message(
-                "❌ That role is above my highest role.", ephemeral=True,
-            )
-        await self._add_button(interaction.guild_id, name, "role", "blurple", label, str(role.id))
-        await interaction.response.send_message(
-            f"✅ Added role-toggle button `{label}` for {role.mention}.", ephemeral=True,
-        )
+    @button.command(name="addlink")
+    async def add_link(self, ctx, name: str, label: str, url: str):
+        """Add a link button to a saved embed."""
+        if await fetch_script(self.bot, ctx.guild.id, name) is None:
+            return await ctx.send(f"❌ No embed named `{name}`.")
+        await self._add_button(ctx.guild.id, name, "link", "blurple", label, url)
+        await ctx.send(f"✅ Added link button `{label}` → {url}")
 
-    @button.command(name="addopen", description="Add a button that opens another saved embed ephemerally")
-    @app_commands.describe(name="Embed name (the one you're adding the button to)", label="Button label",
-                           target="Name of the embed to open when clicked")
-    async def add_open(self, interaction: discord.Interaction, name: str, label: str, target: str):
-        if await fetch_script(self.bot, interaction.guild_id, name) is None:
-            return await interaction.response.send_message(f"❌ No embed named `{name}`.", ephemeral=True)
-        if await fetch_script(self.bot, interaction.guild_id, target) is None:
-            return await interaction.response.send_message(f"❌ No embed named `{target}` to open.", ephemeral=True)
-        await self._add_button(interaction.guild_id, name, "open", "grey", label, target)
-        await interaction.response.send_message(
-            f"✅ Added button `{label}` → opens `{target}` ephemerally.", ephemeral=True,
-        )
+    @button.command(name="addrole")
+    async def add_role(self, ctx, name: str, label: str, role: discord.Role):
+        """Add a role-toggle button to a saved embed."""
+        if await fetch_script(self.bot, ctx.guild.id, name) is None:
+            return await ctx.send(f"❌ No embed named `{name}`.")
+        if role >= ctx.guild.me.top_role:
+            return await ctx.send("❌ That role is above my highest role.")
+        await self._add_button(ctx.guild.id, name, "role", "blurple", label, str(role.id))
+        await ctx.send(f"✅ Added role-toggle button `{label}` for {role.mention}.")
 
-    @button.command(name="list", description="List buttons on a saved embed")
-    async def button_list(self, interaction: discord.Interaction, name: str):
+    @button.command(name="addopen")
+    async def add_open(self, ctx, name: str, label: str, target: str):
+        """Add a button that opens another saved embed ephemerally."""
+        if await fetch_script(self.bot, ctx.guild.id, name) is None:
+            return await ctx.send(f"❌ No embed named `{name}`.")
+        if await fetch_script(self.bot, ctx.guild.id, target) is None:
+            return await ctx.send(f"❌ No embed named `{target}` to open.")
+        await self._add_button(ctx.guild.id, name, "open", "grey", label, target)
+        await ctx.send(f"✅ Added button `{label}` → opens `{target}` ephemerally.")
+
+    @button.command(name="list")
+    async def button_list(self, ctx, name: str):
+        """List buttons on a saved embed."""
         rows = await self.bot.db.fetch(
             "SELECT position, style, label, target FROM embed_buttons "
             "WHERE guild_id=$1 AND embed_name=$2 ORDER BY position",
-            interaction.guild_id, name,
+            ctx.guild.id, name,
         )
         if not rows:
-            return await interaction.response.send_message("ℹ️ No buttons on that embed.", ephemeral=True)
+            return await ctx.send("ℹ️ No buttons on that embed.")
         lines = [f"`{r['position']+1}` · **{r['style']}** · `{r['label']}` → `{r['target']}`" for r in rows]
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+        await ctx.send("\n".join(lines))
 
-    @button.command(name="remove", description="Remove a button by its position (1-based)")
-    async def button_remove(self, interaction: discord.Interaction, name: str, position: int):
+    @button.command(name="remove")
+    async def button_remove(self, ctx, name: str, position: int):
+        """Remove a button by its position (1-based)."""
         result = await self.bot.db.execute(
             "DELETE FROM embed_buttons WHERE guild_id=$1 AND embed_name=$2 AND position=$3",
-            interaction.guild_id, name, position - 1,
+            ctx.guild.id, name, position - 1,
         )
         n = int(result.split()[-1]) if result and result.startswith("DELETE") else 0
         if n == 0:
-            return await interaction.response.send_message("❌ No button at that position.", ephemeral=True)
-        await interaction.response.send_message("✅ Button removed.", ephemeral=True)
+            return await ctx.send("❌ No button at that position.")
+        await ctx.send("✅ Button removed.")
 
     async def _add_button(self, guild_id: int, embed_name: str, style: str, color: str,
                           label: str, target: Optional[str]):

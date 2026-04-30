@@ -2,11 +2,12 @@
 
 The bot is locked to a single home guild + an explicit whitelist. Any other
 server it's added to gets left immediately. On startup, a sweep also leaves any
-existing non-permitted guilds (handles the case where someone added the bot
-while it was offline).
+existing non-permitted guilds.
 
 The home guild is hard-coded as a safety constant — it cannot be removed via
 commands. Whitelist additions are persisted in Postgres.
+
+Commands are prefix-only and owner-only.
 """
 from __future__ import annotations
 
@@ -14,7 +15,6 @@ import logging
 import os
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 log = logging.getLogger("sentinel.guildlock")
@@ -47,7 +47,6 @@ class GuildLock(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # Startup sweep — leave any guild that isn't allowed.
         for guild in list(self.bot.guilds):
             if self._is_allowed(guild.id):
                 continue
@@ -64,7 +63,6 @@ class GuildLock(commands.Cog):
             return
 
         log.warning("Auto-leaving non-permitted guild: %s (%d)", guild.name, guild.id)
-        # Best-effort: tell the guild owner we're not allowed here.
         try:
             if guild.owner is not None:
                 await guild.owner.send(
@@ -78,86 +76,70 @@ class GuildLock(commands.Cog):
         except discord.HTTPException:
             log.exception("Failed to leave %s", guild)
 
-    # ----- whitelist commands (owner-only) -----
+    # ---------------- prefix commands (owner-only) ----------------
 
-    whitelist = app_commands.Group(
-        name="guildwhitelist",
-        description="Manage the guild whitelist (owner only)",
-    )
+    @commands.group(name="guildwhitelist", aliases=["gwl"], invoke_without_command=True)
+    @commands.is_owner()
+    async def whitelist(self, ctx):
+        """Manage the guild whitelist (owner only)."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id if ctx.guild else None)
+        await ctx.send(
+            f"🔐 **Guild whitelist**\n"
+            f"`{prefix}guildwhitelist add <guild_id>`\n"
+            f"`{prefix}guildwhitelist remove <guild_id>`\n"
+            f"`{prefix}guildwhitelist list`\n"
+            f"`{prefix}guildwhitelist leave <guild_id>`",
+        )
 
-    async def _owner_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.bot.owner_id:
-            await interaction.response.send_message("❌ Owner only.", ephemeral=True)
-            return False
-        return True
-
-    @whitelist.command(name="add", description="Allow the bot to stay in a specific guild")
-    @app_commands.describe(guild_id="The guild ID to whitelist")
-    async def wl_add(self, interaction: discord.Interaction, guild_id: str):
-        if not await self._owner_check(interaction):
-            return
-        try:
-            gid = int(guild_id)
-        except ValueError:
-            return await interaction.response.send_message("❌ Invalid guild ID.", ephemeral=True)
+    @whitelist.command(name="add")
+    @commands.is_owner()
+    async def wl_add(self, ctx, guild_id: int):
+        """Allow the bot to stay in a specific guild."""
         await self.bot.db.execute(
-            "INSERT INTO guild_whitelist (guild_id) VALUES ($1) ON CONFLICT DO NOTHING", gid,
+            "INSERT INTO guild_whitelist (guild_id) VALUES ($1) ON CONFLICT DO NOTHING", guild_id,
         )
-        self._allowed.add(gid)
-        await interaction.response.send_message(f"✅ Whitelisted `{gid}`.", ephemeral=True)
+        self._allowed.add(guild_id)
+        await ctx.send(f"✅ Whitelisted `{guild_id}`.")
 
-    @whitelist.command(name="remove", description="Remove a guild from the whitelist (does not kick the bot)")
-    async def wl_remove(self, interaction: discord.Interaction, guild_id: str):
-        if not await self._owner_check(interaction):
-            return
-        try:
-            gid = int(guild_id)
-        except ValueError:
-            return await interaction.response.send_message("❌ Invalid guild ID.", ephemeral=True)
-        if gid == HOME_GUILD_ID:
-            return await interaction.response.send_message(
-                "❌ Refusing to remove the home guild.", ephemeral=True,
-            )
-        await self.bot.db.execute("DELETE FROM guild_whitelist WHERE guild_id=$1", gid)
-        self._allowed.discard(gid)
-        # Note: this doesn't kick the bot from that guild. Owner can /guildwhitelist leave.
-        await interaction.response.send_message(
-            f"✅ Removed `{gid}` from whitelist. Bot will leave on next restart sweep "
-            f"or when re-invited.", ephemeral=True,
+    @whitelist.command(name="remove")
+    @commands.is_owner()
+    async def wl_remove(self, ctx, guild_id: int):
+        """Remove a guild from the whitelist (does not kick the bot)."""
+        if guild_id == HOME_GUILD_ID:
+            return await ctx.send("❌ Refusing to remove the home guild.")
+        await self.bot.db.execute("DELETE FROM guild_whitelist WHERE guild_id=$1", guild_id)
+        self._allowed.discard(guild_id)
+        await ctx.send(
+            f"✅ Removed `{guild_id}` from whitelist. Bot will leave on next restart sweep "
+            f"or when re-invited.",
         )
 
-    @whitelist.command(name="list", description="Show the current whitelist")
-    async def wl_list(self, interaction: discord.Interaction):
-        if not await self._owner_check(interaction):
-            return
+    @whitelist.command(name="list")
+    @commands.is_owner()
+    async def wl_list(self, ctx):
+        """Show the current whitelist."""
         lines = [f"🏠 Home: `{HOME_GUILD_ID}`"]
         extras = sorted(self._allowed - {HOME_GUILD_ID})
         if extras:
             lines.append("Whitelisted: " + ", ".join(f"`{g}`" for g in extras))
         else:
             lines.append("_No additional whitelisted guilds._")
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+        await ctx.send("\n".join(lines))
 
-    @whitelist.command(name="leave", description="Force the bot to leave a non-allowed guild now")
-    async def wl_leave(self, interaction: discord.Interaction, guild_id: str):
-        if not await self._owner_check(interaction):
-            return
-        try:
-            gid = int(guild_id)
-        except ValueError:
-            return await interaction.response.send_message("❌ Invalid guild ID.", ephemeral=True)
-        if gid == HOME_GUILD_ID:
-            return await interaction.response.send_message(
-                "❌ Refusing to leave the home guild.", ephemeral=True,
-            )
-        guild = self.bot.get_guild(gid)
+    @whitelist.command(name="leave")
+    @commands.is_owner()
+    async def wl_leave(self, ctx, guild_id: int):
+        """Force the bot to leave a non-allowed guild now."""
+        if guild_id == HOME_GUILD_ID:
+            return await ctx.send("❌ Refusing to leave the home guild.")
+        guild = self.bot.get_guild(guild_id)
         if guild is None:
-            return await interaction.response.send_message("❌ I'm not in that guild.", ephemeral=True)
+            return await ctx.send("❌ I'm not in that guild.")
         try:
             await guild.leave()
         except discord.HTTPException as e:
-            return await interaction.response.send_message(f"❌ Failed: {e}", ephemeral=True)
-        await interaction.response.send_message(f"✅ Left `{guild.name}` (`{gid}`).", ephemeral=True)
+            return await ctx.send(f"❌ Failed: {e}")
+        await ctx.send(f"✅ Left `{guild.name}` (`{guild_id}`).")
 
 
 async def setup(bot):

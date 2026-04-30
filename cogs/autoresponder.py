@@ -1,11 +1,9 @@
-"""Auto-responder.
+"""Auto-responder. Prefix-only configuration.
 
 When a user message contains a configured trigger, the bot responds with the
 configured script (plain text or full embed). Triggers can be:
   - exact match (full message equals trigger)
   - contains   (default; trigger is a substring of the message)
-
-Optional restrictions: a role and/or channel that the message must come from.
 """
 from __future__ import annotations
 
@@ -13,7 +11,6 @@ import logging
 from typing import Optional
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 from utils import embed_script
@@ -26,7 +23,7 @@ CREATE TABLE IF NOT EXISTS autoresponders (
     guild_id        BIGINT NOT NULL,
     trigger         TEXT NOT NULL,
     response        TEXT NOT NULL,
-    match_type      TEXT NOT NULL DEFAULT 'contains',  -- 'contains' | 'exact'
+    match_type      TEXT NOT NULL DEFAULT 'contains',
     case_sensitive  BOOLEAN NOT NULL DEFAULT FALSE,
     role_id         BIGINT,
     channel_id      BIGINT
@@ -35,18 +32,12 @@ CREATE TABLE IF NOT EXISTS autoresponders (
 CREATE INDEX IF NOT EXISTS autoresponders_guild ON autoresponders (guild_id);
 """
 
-MATCH_CHOICES = [
-    app_commands.Choice(name="contains (substring)", value="contains"),
-    app_commands.Choice(name="exact (full match)", value="exact"),
-]
-
 
 class Autoresponder(commands.Cog):
     """💬 Auto-responder"""
 
     def __init__(self, bot):
         self.bot = bot
-        # guild_id -> list[row dict]
         self._cache: dict[int, list[dict]] = {}
 
     async def cog_load(self):
@@ -98,76 +89,78 @@ class Autoresponder(commands.Cog):
                 )
             except (discord.Forbidden, discord.HTTPException):
                 pass
-            return  # only one rule fires per message
+            return
 
-    autoresponder = app_commands.Group(
-        name="autoresponder",
-        description="Auto-respond to messages",
-        default_permissions=discord.Permissions(manage_messages=True),
-        guild_only=True,
-    )
+    # ---------------- commands ----------------
 
-    @autoresponder.command(name="add", description="Add an auto-responder rule")
-    @app_commands.choices(match=MATCH_CHOICES)
-    @app_commands.describe(
-        trigger="What to look for in messages",
-        response="Reply (plain text or embed script)",
-        match="contains (default) or exact",
-        case_sensitive="Match case-sensitively (default off)",
-        role="Only fire when sender has this role (optional)",
-        channel="Only fire in this channel (optional)",
-    )
-    async def add(
-        self,
-        interaction: discord.Interaction,
-        trigger: str,
-        response: str,
-        match: Optional[app_commands.Choice[str]] = None,
-        case_sensitive: bool = False,
-        role: Optional[discord.Role] = None,
-        channel: Optional[discord.TextChannel] = None,
-    ):
-        match_type = match.value if match else "contains"
+    @commands.group(name="autoresponder", aliases=["ar"], invoke_without_command=True)
+    @commands.guild_only()
+    @commands.has_permissions(manage_messages=True)
+    async def autoresponder(self, ctx):
+        """Auto-respond to messages."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
+        await ctx.send(
+            f"💬 **Auto-responder**\n"
+            f"`{prefix}autoresponder add <trigger> | <response>` (use `|` to separate)\n"
+            f"`{prefix}autoresponder addexact <trigger> | <response>`\n"
+            f"`{prefix}autoresponder remove <id>`\n"
+            f"`{prefix}autoresponder list`",
+        )
+
+    @autoresponder.command(name="add")
+    async def add(self, ctx, *, body: str):
+        """Add a contains-match auto-responder. Format: trigger | response"""
+        await self._add(ctx, body, "contains")
+
+    @autoresponder.command(name="addexact")
+    async def addexact(self, ctx, *, body: str):
+        """Add an exact-match auto-responder. Format: trigger | response"""
+        await self._add(ctx, body, "exact")
+
+    async def _add(self, ctx, body: str, match_type: str):
+        if "|" not in body:
+            return await ctx.send("❌ Use `trigger | response` (separator is `|`).")
+        trigger, response = (s.strip() for s in body.split("|", 1))
+        if not trigger or not response:
+            return await ctx.send("❌ Both trigger and response are required.")
         await self.bot.db.execute(
-            """INSERT INTO autoresponders (guild_id, trigger, response, match_type, case_sensitive, role_id, channel_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)""",
-            interaction.guild_id, trigger, response, match_type, case_sensitive,
-            role.id if role else None, channel.id if channel else None,
+            """INSERT INTO autoresponders (guild_id, trigger, response, match_type)
+               VALUES ($1, $2, $3, $4)""",
+            ctx.guild.id, trigger, response, match_type,
         )
         await self._refresh()
-        await interaction.response.send_message(
-            f"✅ Added auto-responder for `{trigger}` ({match_type}).", ephemeral=True,
-        )
+        await ctx.send(f"✅ Added auto-responder for `{trigger}` ({match_type}).")
 
-    @autoresponder.command(name="remove", description="Remove an auto-responder by ID")
-    async def remove(self, interaction: discord.Interaction, id: int):
+    @autoresponder.command(name="remove")
+    async def remove(self, ctx, id: int):
+        """Remove an auto-responder by ID."""
         result = await self.bot.db.execute(
-            "DELETE FROM autoresponders WHERE id=$1 AND guild_id=$2",
-            id, interaction.guild_id,
+            "DELETE FROM autoresponders WHERE id=$1 AND guild_id=$2", id, ctx.guild.id,
         )
         n = int(result.split()[-1]) if result and result.startswith("DELETE") else 0
         if n == 0:
-            return await interaction.response.send_message("❌ No auto-responder with that ID.", ephemeral=True)
+            return await ctx.send("❌ No auto-responder with that ID.")
         await self._refresh()
-        await interaction.response.send_message("✅ Removed.", ephemeral=True)
+        await ctx.send("✅ Removed.")
 
-    @autoresponder.command(name="list", description="List auto-responders")
-    async def list_(self, interaction: discord.Interaction):
-        rows = self._cache.get(interaction.guild_id, [])
+    @autoresponder.command(name="list")
+    async def list_(self, ctx):
+        """List auto-responders."""
+        rows = self._cache.get(ctx.guild.id, [])
         if not rows:
-            return await interaction.response.send_message("ℹ️ None configured.", ephemeral=True)
+            return await ctx.send("ℹ️ None configured.")
         lines = []
         for r in rows[:25]:
             constraints = []
             if r["channel_id"]:
-                ch = interaction.guild.get_channel(r["channel_id"])
+                ch = ctx.guild.get_channel(r["channel_id"])
                 constraints.append(f"in {ch.mention if ch else r['channel_id']}")
             if r["role_id"]:
-                role = interaction.guild.get_role(r["role_id"])
+                role = ctx.guild.get_role(r["role_id"])
                 constraints.append(f"role {role.mention if role else r['role_id']}")
             tail = (" · " + ", ".join(constraints)) if constraints else ""
             lines.append(f"`#{r['id']}` **{r['match_type']}** `{r['trigger'][:40]}` → `{r['response'][:40]}`{tail}")
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+        await ctx.send("\n".join(lines))
 
 
 async def setup(bot):

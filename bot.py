@@ -29,6 +29,18 @@ logging.basicConfig(
 )
 log = logging.getLogger("sentinel")
 
+# Allowlist for slash commands. Everything else stays accessible via prefix only,
+# so the slash menu mirrors Bleed's vibe: short, basic, user-facing actions.
+SLASH_ALLOWLIST = frozenset({
+    # General
+    "help", "afk", "snipe", "editsnipe",
+    # Moderation basics (already hybrid)
+    "ban", "kick", "unban", "mute", "unmute", "warn",
+    "purge", "clear", "slowmode", "lock", "unlock", "nuke",
+    # Ticket lifecycle (Bleed parity)
+    "add", "claim", "unclaim", "close", "transcript",
+})
+
 INITIAL_COGS = (
     "cogs.configure",
     "cogs.moderation",
@@ -108,6 +120,14 @@ class Sentinel(commands.Bot):
                 log.info("Loaded %s", cog)
             except Exception:
                 log.exception("Failed to load %s", cog)
+
+        # Defensive cleanup: only the allowlisted commands are exposed via slash.
+        # Anything that slipped in (e.g. a hybrid command somewhere) gets pruned
+        # so the slash menu stays clean (Bleed-style: simple actionable commands only).
+        for cmd in list(self.tree.get_commands()):
+            if cmd.name not in SLASH_ALLOWLIST:
+                self.tree.remove_command(cmd.name, type=cmd.type)
+                log.info("Pruned %s from slash tree (not on allowlist)", cmd.name)
 
         # Sync application (slash) commands globally on boot.
         # Discord can take up to ~1 hour to propagate global syncs the first time.

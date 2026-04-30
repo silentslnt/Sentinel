@@ -1,4 +1,4 @@
-"""Vanity / server-tag role detector.
+"""Vanity / server-tag role detector. Prefix-only configuration.
 
 Two detection modes (either or both can be enabled per guild):
   1. status   — Bleed-style: scan custom status text for a configured substring.
@@ -9,16 +9,14 @@ match, the roles are revoked. Detection runs:
   - on_presence_update     (custom status text changes)
   - on_member_update       (member profile changes)
   - on_user_update          (primary_guild changes carry through here)
-  - periodic full sweep    (every 10 min, catches missed events / restarts)
+  - periodic full sweep    (every 10 min)
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 import discord
-from discord import app_commands
 from discord.ext import commands, tasks
 
 log = logging.getLogger("sentinel.vanity")
@@ -27,7 +25,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS vanity_config (
     guild_id          BIGINT PRIMARY KEY,
     substring         TEXT,
-    mode              TEXT NOT NULL DEFAULT 'both',  -- 'status' | 'tag' | 'both'
+    mode              TEXT NOT NULL DEFAULT 'both',
     award_channel_id  BIGINT,
     message           TEXT
 );
@@ -45,9 +43,10 @@ CREATE TABLE IF NOT EXISTS vanity_granted (
 );
 """
 
+VALID_MODES = ("status", "tag", "both")
+
 
 def _custom_status_text(member: discord.Member) -> str:
-    """Return the member's custom status text, or empty string."""
     for activity in member.activities:
         if isinstance(activity, discord.CustomActivity) and activity.name:
             return activity.name
@@ -55,7 +54,6 @@ def _custom_status_text(member: discord.Member) -> str:
 
 
 def _has_guild_tag(member: discord.Member, guild_id: int) -> bool:
-    """Return True if the member's Discord primary-guild tag points at this guild."""
     primary = getattr(member, "primary_guild", None)
     if primary is None:
         return False
@@ -69,9 +67,7 @@ class Vanity(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        # In-memory cache: guild_id -> config dict
         self._cfg: dict[int, dict] = {}
-        # In-memory cache: guild_id -> set of role_id
         self._roles: dict[int, set[int]] = {}
 
     async def cog_load(self):
@@ -97,9 +93,8 @@ class Vanity(commands.Cog):
         roles = self._roles.get(guild_id)
         if not roles:
             return False
-        # At minimum, tag mode works without a substring; status mode needs one.
-        if cfg["mode"] in ("status", "both") and not cfg.get("substring"):
-            return cfg["mode"] == "both" and True  # tag-only fallback still works in 'both'
+        if cfg["mode"] == "status" and not cfg.get("substring"):
+            return False
         return True
 
     def _matches(self, member: discord.Member) -> bool:
@@ -117,7 +112,6 @@ class Vanity(commands.Cog):
         return False
 
     async def _evaluate(self, member: discord.Member):
-        """Grant/revoke vanity roles for a single member based on current state."""
         if member.bot or member.guild is None:
             return
         guild_id = member.guild.id
@@ -141,18 +135,15 @@ class Vanity(commands.Cog):
                 except (discord.Forbidden, discord.HTTPException) as e:
                     log.warning("vanity add_roles failed for %s: %s", member, e)
                     return
-                # Track grant + post thank-you (only on first grant of any role)
-                already_granted = await self.bot.db.fetchval(
+                already = await self.bot.db.fetchval(
                     "SELECT 1 FROM vanity_granted WHERE guild_id=$1 AND user_id=$2",
-                    guild_id,
-                    member.id,
+                    guild_id, member.id,
                 )
-                if not already_granted:
+                if not already:
                     await self.bot.db.execute(
                         "INSERT INTO vanity_granted (guild_id, user_id) VALUES ($1, $2) "
                         "ON CONFLICT DO NOTHING",
-                        guild_id,
-                        member.id,
+                        guild_id, member.id,
                     )
                     await self._send_award_message(member)
         else:
@@ -164,8 +155,7 @@ class Vanity(commands.Cog):
                     log.warning("vanity remove_roles failed for %s: %s", member, e)
                 await self.bot.db.execute(
                     "DELETE FROM vanity_granted WHERE guild_id=$1 AND user_id=$2",
-                    guild_id,
-                    member.id,
+                    guild_id, member.id,
                 )
 
     async def _send_award_message(self, member: discord.Member):
@@ -179,15 +169,13 @@ class Vanity(commands.Cog):
         channel = member.guild.get_channel(channel_id)
         if channel is None:
             return
-        # Phase 2: plain text with simple {user} substitution. Phase 3 will swap
-        # this for the full embed-script parser.
         text = message.replace("{user}", member.mention).replace("{user.name}", member.display_name)
         try:
             await channel.send(text)
         except (discord.Forbidden, discord.HTTPException):
             pass
 
-    # ------------------- listeners -------------------
+    # ----- listeners -----
 
     @commands.Cog.listener()
     async def on_presence_update(self, before: discord.Member, after: discord.Member):
@@ -197,8 +185,6 @@ class Vanity(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
-        # Re-evaluate on role/profile changes (covers manual role removal, tag changes
-        # that arrive via member update on some clients).
         if before.roles == after.roles and getattr(before, "primary_guild", None) == getattr(after, "primary_guild", None):
             return
         await self._evaluate(after)
@@ -207,7 +193,6 @@ class Vanity(commands.Cog):
     async def on_user_update(self, before: discord.User, after: discord.User):
         if getattr(before, "primary_guild", None) == getattr(after, "primary_guild", None):
             return
-        # primary_guild changed — sweep this user across every guild we share with them.
         for guild in self.bot.guilds:
             member = guild.get_member(after.id)
             if member is not None:
@@ -215,7 +200,6 @@ class Vanity(commands.Cog):
 
     @tasks.loop(minutes=10)
     async def periodic_sweep(self):
-        """Catch any drift from missed gateway events."""
         for guild in self.bot.guilds:
             if not self._enabled_for(guild.id):
                 continue
@@ -226,25 +210,15 @@ class Vanity(commands.Cog):
                     await self._evaluate(member)
                 except Exception:
                     log.exception("periodic_sweep failed for %s", member)
-                await asyncio.sleep(0)  # yield to the event loop
+                await asyncio.sleep(0)
 
     @periodic_sweep.before_loop
     async def _before_sweep(self):
         await self.bot.wait_until_ready()
 
-    # ------------------- commands -------------------
-
-    vanity = app_commands.Group(
-        name="vanity",
-        description="Vanity / server-tag role automation",
-        default_permissions=discord.Permissions(manage_guild=True),
-        guild_only=True,
-    )
-
-    role_group = app_commands.Group(name="role", description="Manage reward roles", parent=vanity)
+    # ----- commands -----
 
     async def _upsert_cfg(self, guild_id: int, **fields):
-        # Ensure row exists with defaults.
         await self.bot.db.execute(
             "INSERT INTO vanity_config (guild_id) VALUES ($1) ON CONFLICT DO NOTHING",
             guild_id,
@@ -257,102 +231,126 @@ class Vanity(commands.Cog):
             )
         await self._refresh_cache()
 
-    @vanity.command(name="set", description="Set the substring to monitor in user statuses (e.g. /sentinel)")
-    @app_commands.describe(substring="The substring to look for in custom status. Empty to clear.")
-    async def vanity_set(self, interaction: discord.Interaction, substring: str):
-        await self._upsert_cfg(interaction.guild_id, substring=substring or None)
-        await interaction.response.send_message(
-            f"✅ Now monitoring custom statuses for `{substring}`." if substring
-            else "✅ Substring cleared.",
-            ephemeral=True,
+    @commands.group(name="vanity", invoke_without_command=True)
+    @commands.guild_only()
+    @commands.has_permissions(manage_guild=True)
+    async def vanity(self, ctx):
+        """Vanity / server-tag role automation."""
+        prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
+        await ctx.send(
+            f"🏷️ **Vanity / server-tag**\n"
+            f"`{prefix}vanity set <substring>` · monitor custom status for substring\n"
+            f"`{prefix}vanity mode <status|tag|both>`\n"
+            f"`{prefix}vanity channel <#channel>` · award message destination\n"
+            f"`{prefix}vanity message <text>` · award text (`{{user}}`, `{{user.name}}`)\n"
+            f"`{prefix}vanity role add <@role>` · add reward role\n"
+            f"`{prefix}vanity role remove <@role>`\n"
+            f"`{prefix}vanity role list`\n"
+            f"`{prefix}vanity config`\n"
+            f"`{prefix}vanity resync`",
         )
 
-    @vanity.command(name="mode", description="Set detection mode: status, tag, or both")
-    @app_commands.choices(mode=[
-        app_commands.Choice(name="status (substring in custom status)", value="status"),
-        app_commands.Choice(name="tag (Discord guild tag pointing at this server)", value="tag"),
-        app_commands.Choice(name="both", value="both"),
-    ])
-    async def vanity_mode(self, interaction: discord.Interaction, mode: app_commands.Choice[str]):
-        await self._upsert_cfg(interaction.guild_id, mode=mode.value)
-        await interaction.response.send_message(f"✅ Detection mode set to **{mode.value}**.", ephemeral=True)
+    @vanity.command(name="set")
+    async def vanity_set(self, ctx, *, substring: str = ""):
+        """Set the substring to monitor in user statuses (e.g. /sentinel)."""
+        await self._upsert_cfg(ctx.guild.id, substring=substring or None)
+        await ctx.send(
+            f"✅ Now monitoring custom statuses for `{substring}`." if substring
+            else "✅ Substring cleared.",
+        )
 
-    @vanity.command(name="channel", description="Channel where award messages are posted")
-    async def vanity_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        await self._upsert_cfg(interaction.guild_id, award_channel_id=channel.id)
-        await interaction.response.send_message(f"✅ Award messages will be posted in {channel.mention}.", ephemeral=True)
+    @vanity.command(name="mode")
+    async def vanity_mode(self, ctx, mode: str):
+        """Set detection mode: status, tag, or both."""
+        mode = mode.lower()
+        if mode not in VALID_MODES:
+            return await ctx.send(f"❌ Mode must be one of: {', '.join(VALID_MODES)}")
+        await self._upsert_cfg(ctx.guild.id, mode=mode)
+        await ctx.send(f"✅ Detection mode set to **{mode}**.")
 
-    @vanity.command(name="message", description="Award message text (supports {user} and {user.name})")
-    async def vanity_message(self, interaction: discord.Interaction, message: str):
-        await self._upsert_cfg(interaction.guild_id, message=message)
-        await interaction.response.send_message("✅ Award message updated.", ephemeral=True)
+    @vanity.command(name="channel")
+    async def vanity_channel(self, ctx, channel: discord.TextChannel):
+        """Channel where award messages are posted."""
+        await self._upsert_cfg(ctx.guild.id, award_channel_id=channel.id)
+        await ctx.send(f"✅ Award messages will be posted in {channel.mention}.")
 
-    @vanity.command(name="config", description="View current vanity configuration")
-    async def vanity_config(self, interaction: discord.Interaction):
-        cfg = self._cfg.get(interaction.guild_id)
-        roles = self._roles.get(interaction.guild_id, set())
+    @vanity.command(name="message")
+    async def vanity_message(self, ctx, *, message: str):
+        """Award message text (supports {user} and {user.name})."""
+        await self._upsert_cfg(ctx.guild.id, message=message)
+        await ctx.send("✅ Award message updated.")
+
+    @vanity.command(name="config")
+    async def vanity_config(self, ctx):
+        """View current vanity configuration."""
+        cfg = self._cfg.get(ctx.guild.id)
+        roles = self._roles.get(ctx.guild.id, set())
         if not cfg:
-            return await interaction.response.send_message("ℹ️ Vanity is not configured here yet.", ephemeral=True)
+            return await ctx.send("ℹ️ Vanity is not configured here yet.")
         embed = discord.Embed(title="🏷️ Vanity Configuration", color=discord.Color.blurple())
         embed.add_field(name="Mode", value=f"`{cfg.get('mode', 'both')}`", inline=True)
         embed.add_field(name="Substring", value=f"`{cfg.get('substring') or '—'}`", inline=True)
-        ch = interaction.guild.get_channel(cfg.get("award_channel_id") or 0)
+        ch = ctx.guild.get_channel(cfg.get("award_channel_id") or 0)
         embed.add_field(name="Award Channel", value=ch.mention if ch else "—", inline=True)
         role_mentions = []
         for rid in roles:
-            r = interaction.guild.get_role(rid)
+            r = ctx.guild.get_role(rid)
             if r:
                 role_mentions.append(r.mention)
         embed.add_field(name=f"Reward Roles ({len(role_mentions)})", value=", ".join(role_mentions) or "—", inline=False)
         embed.add_field(name="Message", value=(cfg.get("message") or "—")[:1024], inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed)
 
-    @role_group.command(name="add", description="Add a reward role")
-    async def role_add(self, interaction: discord.Interaction, role: discord.Role):
-        if role >= interaction.guild.me.top_role:
-            return await interaction.response.send_message(
-                "❌ That role is above my highest role — I can't manage it.", ephemeral=True
-            )
-        await self._upsert_cfg(interaction.guild_id)  # ensure config row exists
+    @vanity.group(name="role", invoke_without_command=True)
+    async def vanity_role(self, ctx):
+        """Manage reward roles."""
+        await self.vanity(ctx)
+
+    @vanity_role.command(name="add")
+    async def role_add(self, ctx, role: discord.Role):
+        """Add a reward role."""
+        if role >= ctx.guild.me.top_role:
+            return await ctx.send("❌ That role is above my highest role — I can't manage it.")
+        await self._upsert_cfg(ctx.guild.id)
         await self.bot.db.execute(
             "INSERT INTO vanity_roles (guild_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            interaction.guild_id,
-            role.id,
+            ctx.guild.id, role.id,
         )
         await self._refresh_cache()
-        await interaction.response.send_message(f"✅ Added {role.mention} as a reward role.", ephemeral=True)
+        await ctx.send(f"✅ Added {role.mention} as a reward role.")
 
-    @role_group.command(name="remove", description="Remove a reward role")
-    async def role_remove(self, interaction: discord.Interaction, role: discord.Role):
+    @vanity_role.command(name="remove")
+    async def role_remove(self, ctx, role: discord.Role):
+        """Remove a reward role."""
         await self.bot.db.execute(
             "DELETE FROM vanity_roles WHERE guild_id=$1 AND role_id=$2",
-            interaction.guild_id,
-            role.id,
+            ctx.guild.id, role.id,
         )
         await self._refresh_cache()
-        await interaction.response.send_message(f"✅ Removed {role.mention} from reward roles.", ephemeral=True)
+        await ctx.send(f"✅ Removed {role.mention} from reward roles.")
 
-    @role_group.command(name="list", description="List all reward roles")
-    async def role_list(self, interaction: discord.Interaction):
-        roles = self._roles.get(interaction.guild_id, set())
+    @vanity_role.command(name="list")
+    async def role_list(self, ctx):
+        """List all reward roles."""
+        roles = self._roles.get(ctx.guild.id, set())
         if not roles:
-            return await interaction.response.send_message("ℹ️ No reward roles configured.", ephemeral=True)
+            return await ctx.send("ℹ️ No reward roles configured.")
         mentions = []
         for rid in roles:
-            r = interaction.guild.get_role(rid)
+            r = ctx.guild.get_role(rid)
             mentions.append(r.mention if r else f"`<deleted role {rid}>`")
-        await interaction.response.send_message("Reward roles: " + ", ".join(mentions), ephemeral=True)
+        await ctx.send("Reward roles: " + ", ".join(mentions))
 
-    @vanity.command(name="resync", description="Force re-evaluation of every member in this server")
-    async def vanity_resync(self, interaction: discord.Interaction):
-        if not self._enabled_for(interaction.guild_id):
-            return await interaction.response.send_message(
-                "❌ Vanity is not fully configured (need substring/tag mode + at least one reward role).",
-                ephemeral=True,
+    @vanity.command(name="resync")
+    async def vanity_resync(self, ctx):
+        """Force re-evaluation of every member in this server."""
+        if not self._enabled_for(ctx.guild.id):
+            return await ctx.send(
+                "❌ Vanity is not fully configured (need substring/tag mode + at least one reward role)."
             )
-        await interaction.response.send_message("⏳ Resync started…", ephemeral=True)
+        msg = await ctx.send("⏳ Resync started…")
         count = 0
-        for member in interaction.guild.members:
+        for member in ctx.guild.members:
             if member.bot:
                 continue
             try:
@@ -361,7 +359,7 @@ class Vanity(commands.Cog):
             except Exception:
                 log.exception("resync failed for %s", member)
             await asyncio.sleep(0)
-        await interaction.followup.send(f"✅ Resync complete — evaluated {count} members.", ephemeral=True)
+        await msg.edit(content=f"✅ Resync complete — evaluated {count} members.")
 
 
 async def setup(bot):
