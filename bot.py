@@ -32,7 +32,12 @@ log = logging.getLogger("sentinel")
 INITIAL_COGS = (
     "cogs.configure",
     "cogs.moderation",
+    "cogs.role_manager",
+    "cogs.channel_manager",
     "cogs.utility",
+    "cogs.afk",
+    "cogs.snipe",
+    "cogs.guildlock",
     "cogs.vanity",
     "cogs.system_messages",
     "cogs.booster",

@@ -198,12 +198,12 @@ class Moderation(commands.Cog):
             return await ctx.send(f"❌ Failed to unmute: {e}")
         await ctx.send(f"🔊 {member.mention} has been unmuted")
 
-    @commands.hybrid_command(aliases=["purge"])
+    @commands.hybrid_command(aliases=["clear"])
     @commands.guild_only()
     @commands.has_permissions(manage_messages=True)
     @commands.bot_has_permissions(manage_messages=True)
-    async def clear(self, ctx, amount: int = 10):
-        """Clear messages from the channel (1–100)."""
+    async def purge(self, ctx, amount: int):
+        """Purge messages from the channel. Amount (1–100) is required."""
         if amount < 1 or amount > 100:
             return await ctx.send("❌ Please provide a number between 1 and 100")
 
@@ -325,43 +325,6 @@ class Moderation(commands.Cog):
             await member.send(f"You have been warned in **{ctx.guild.name}** for: {reason}")
         except (discord.Forbidden, discord.HTTPException):
             pass
-
-    @commands.hybrid_command()
-    @commands.guild_only()
-    @commands.has_permissions(manage_roles=True)
-    @commands.bot_has_permissions(manage_roles=True)
-    async def addrole(self, ctx, member: discord.Member, role: discord.Role):
-        """Add a role to a member."""
-        if role >= ctx.guild.me.top_role:
-            return await ctx.send("❌ That role is above my highest role.")
-        if ctx.author != ctx.guild.owner and role >= ctx.author.top_role:
-            return await ctx.send("❌ That role is above your highest role.")
-        if role in member.roles:
-            return await ctx.send(f"ℹ️ {member.mention} already has {role.mention}.")
-        try:
-            await member.add_roles(role, reason=f"Added by {ctx.author}")
-        except discord.Forbidden:
-            return await ctx.send("❌ I don't have permission to assign that role.")
-        await ctx.send(f"✅ Added {role.mention} to {member.mention}")
-
-    @commands.hybrid_command()
-    @commands.guild_only()
-    @commands.has_permissions(manage_roles=True)
-    @commands.bot_has_permissions(manage_roles=True)
-    async def removerole(self, ctx, member: discord.Member, role: discord.Role):
-        """Remove a role from a member."""
-        if role >= ctx.guild.me.top_role:
-            return await ctx.send("❌ That role is above my highest role.")
-        if ctx.author != ctx.guild.owner and role >= ctx.author.top_role:
-            return await ctx.send("❌ That role is above your highest role.")
-        if role not in member.roles:
-            return await ctx.send(f"ℹ️ {member.mention} doesn't have {role.mention}.")
-        try:
-            await member.remove_roles(role, reason=f"Removed by {ctx.author}")
-        except discord.Forbidden:
-            return await ctx.send("❌ I don't have permission to remove that role.")
-        await ctx.send(f"✅ Removed {role.mention} from {member.mention}")
-
 
 async def setup(bot):
     await bot.add_cog(Moderation(bot))

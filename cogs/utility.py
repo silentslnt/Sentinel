@@ -220,12 +220,6 @@ class Utility(commands.Cog):
         
         await ctx.send(f"{ctx.author.mention}", embed=embed)
     
-    @commands.command(aliases=['afk'])
-    async def setafk(self, ctx, *, message="AFK"):
-        """Set yourself as AFK"""
-        # This would need a database to store AFK status
-        await ctx.send(f"✅ AFK set: {message}")
-    
     @commands.command()
     async def embed(self, ctx, title, *, description):
         """Create a custom embed"""

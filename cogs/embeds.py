@@ -18,6 +18,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from utils import embed_script
+from utils.embed_builder import EmbedBuilderView
 
 log = logging.getLogger("sentinel.embeds")
 
@@ -172,48 +173,6 @@ async def fetch_script(bot, guild_id: int, name: str) -> Optional[str]:
     )
 
 
-# ---------------- Modal for /embed create ----------------
-
-class EmbedCreateModal(discord.ui.Modal, title="Create Embed"):
-    embed_title = discord.ui.TextInput(label="Title", required=False, max_length=256)
-    description = discord.ui.TextInput(label="Description", style=discord.TextStyle.long, required=False, max_length=4000)
-    color = discord.ui.TextInput(label="Color (hex, e.g. 5865F2)", required=False, max_length=7)
-    footer = discord.ui.TextInput(label="Footer", required=False, max_length=2048)
-    image = discord.ui.TextInput(label="Image URL", required=False)
-
-    def __init__(self, name: str):
-        super().__init__()
-        self.name = name
-
-    async def on_submit(self, interaction: discord.Interaction):
-        parts = []
-        if self.embed_title.value:
-            parts.append(f"{{title: {self.embed_title.value}}}")
-        if self.description.value:
-            parts.append(f"{{description: {self.description.value}}}")
-        if self.color.value:
-            parts.append(f"{{color: #{self.color.value.lstrip('#')}}}")
-        if self.footer.value:
-            parts.append(f"{{footer: {self.footer.value}}}")
-        if self.image.value:
-            parts.append(f"{{image: {self.image.value}}}")
-        if not parts:
-            return await interaction.response.send_message("❌ All fields empty — nothing to save.", ephemeral=True)
-        script = "$v".join(parts)
-
-        await interaction.client.db.execute(
-            """INSERT INTO saved_embeds (guild_id, name, script) VALUES ($1, $2, $3)
-               ON CONFLICT (guild_id, name) DO UPDATE SET script = EXCLUDED.script""",
-            interaction.guild_id, self.name, script,
-        )
-        rendered = embed_script.render(script, user=interaction.user, guild=interaction.guild, channel=interaction.channel)
-        await interaction.response.send_message(
-            content=f"✅ Saved embed `{self.name}`. Preview:" + (f"\n{rendered.content}" if rendered.content else ""),
-            embed=rendered.embed,
-            ephemeral=True,
-        )
-
-
 # ---------------- Cog ----------------
 
 class Embeds(commands.Cog):
@@ -236,14 +195,34 @@ class Embeds(commands.Cog):
 
     button = app_commands.Group(name="button", description="Manage embed buttons", parent=embed)
 
-    @embed.command(name="create", description="Open an interactive modal to create a saved embed")
-    @app_commands.describe(name="Short name (lowercase letters, digits, _ and - only)")
+    @embed.command(name="create", description="Open the guided embed builder")
+    @app_commands.describe(name="Short name to save under (lowercase letters, digits, _ and - only)")
     async def create(self, interaction: discord.Interaction, name: str):
         if not NAME_RE.match(name):
             return await interaction.response.send_message(
                 "❌ Name must be 1–32 chars: lowercase letters, digits, `_`, `-`.", ephemeral=True,
             )
-        await interaction.response.send_modal(EmbedCreateModal(name))
+
+        async def on_save(modal_interaction: discord.Interaction, save_name: str, script: str) -> bool:
+            await self.bot.db.execute(
+                """INSERT INTO saved_embeds (guild_id, name, script) VALUES ($1, $2, $3)
+                   ON CONFLICT (guild_id, name) DO UPDATE SET script = EXCLUDED.script""",
+                modal_interaction.guild_id, save_name, script,
+            )
+            await modal_interaction.response.send_message(
+                f"✅ Saved as `{save_name}`. Send it with `/embed send name:{save_name} channel:#…`.",
+                ephemeral=True,
+            )
+            return True
+
+        view = EmbedBuilderView(interaction.user.id, name=name, on_save=on_save)
+        await interaction.response.send_message(
+            content=f"🧱 Building embed `{name}`. Click a button below to edit a section. "
+                    f"The preview updates live; click **✅ Save** when you're done.",
+            embed=view.state.to_preview_embed(),
+            view=view,
+        )
+        view.message = await interaction.original_response()
 
     @embed.command(name="save", description="Save (or overwrite) an embed from a script")
     @app_commands.describe(
