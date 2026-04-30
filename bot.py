@@ -33,7 +33,7 @@ log = logging.getLogger("sentinel")
 # so the slash menu mirrors Bleed's vibe: short, basic, user-facing actions.
 SLASH_ALLOWLIST = frozenset({
     # General
-    "help", "afk", "snipe", "editsnipe",
+    "help", "afk", "snipe", "editsnipe", "crypto",
     # Moderation basics (already hybrid)
     "ban", "kick", "unban", "mute", "unmute", "warn",
     "purge", "clear", "slowmode", "lock", "unlock", "nuke",
@@ -63,6 +63,7 @@ INITIAL_COGS = (
     "cogs.logging",
     "cogs.counters",
     "cogs.autoresponder",
+    "cogs.crypto",
     "cogs.help",
 )
 
