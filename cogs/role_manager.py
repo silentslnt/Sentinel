@@ -48,7 +48,7 @@ class RoleManager(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.group(name="role", invoke_without_command=True)
+    @commands.group(name="role", aliases=["r"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_roles=True)
     async def role(self, ctx):

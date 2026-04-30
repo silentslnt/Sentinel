@@ -237,7 +237,7 @@ class Logging(commands.Cog):
 
     # ---------------- commands ----------------
 
-    @commands.group(name="log", invoke_without_command=True)
+    @commands.group(name="log", aliases=["logs", "logging"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
     async def log_group(self, ctx):

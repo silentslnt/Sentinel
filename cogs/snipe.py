@@ -2,6 +2,8 @@
 
 In-memory only (no DB). One slot per channel for delete + one for edit.
 Entries expire after 1 hour.
+
+Hybrid commands so both `/snipe` and `.snipe` (or `.s`) work.
 """
 from __future__ import annotations
 
@@ -10,7 +12,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 EXPIRY_SECONDS = 3600
@@ -25,7 +26,7 @@ class Snipe:
     attachments: list[str]
     timestamp: float  # monotonic
     when: float       # epoch seconds for display
-    edited_to: Optional[str] = None  # only for edit-snipes
+    edited_to: Optional[str] = None
 
 
 def _expired(s: Snipe) -> bool:
@@ -37,7 +38,6 @@ class SnipeCog(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        # channel_id -> Snipe
         self._deleted: dict[int, Snipe] = {}
         self._edited: dict[int, Snipe] = {}
 
@@ -68,49 +68,47 @@ class SnipeCog(commands.Cog):
             content=before.content,
             attachments=[],
             timestamp=time.monotonic(),
-            when=after.edited_at.timestamp() if after.edited_at else after.created_at.timestamp(),
+            when=(after.edited_at or after.created_at).timestamp(),
             edited_to=after.content,
         )
 
-    @app_commands.command(name="snipe", description="Show the last deleted message in this channel")
-    @app_commands.guild_only()
-    async def snipe(self, interaction: discord.Interaction):
-        s = self._deleted.get(interaction.channel_id)
+    @commands.hybrid_command(name="snipe", aliases=["s"])
+    @commands.guild_only()
+    async def snipe(self, ctx):
+        """Show the last deleted message in this channel."""
+        s = self._deleted.get(ctx.channel.id)
         if s is None or _expired(s):
-            self._deleted.pop(interaction.channel_id, None)
-            return await interaction.response.send_message(
-                "ℹ️ Nothing to snipe in this channel.", ephemeral=True,
-            )
+            self._deleted.pop(ctx.channel.id, None)
+            return await ctx.send("ℹ️ Nothing to snipe in this channel.")
         embed = discord.Embed(
             description=s.content or "_no text content_",
             color=discord.Color.dark_red(),
-            timestamp=discord.utils.snowflake_time(int(s.when * 1000) << 22) if False else None,
+            timestamp=discord.utils.utcnow(),
         )
         embed.set_author(name=s.author_name, icon_url=s.author_avatar)
-        embed.set_footer(text=f"Deleted from #{interaction.channel.name}")
+        embed.set_footer(text=f"Deleted from #{ctx.channel.name}")
         if s.attachments:
             embed.add_field(
                 name="Attachments",
                 value="\n".join(s.attachments[:5]),
                 inline=False,
             )
-        await interaction.response.send_message(embed=embed)
+        await ctx.send(embed=embed)
 
-    @app_commands.command(name="editsnipe", description="Show the last edited message in this channel")
-    @app_commands.guild_only()
-    async def editsnipe(self, interaction: discord.Interaction):
-        s = self._edited.get(interaction.channel_id)
+    @commands.hybrid_command(name="editsnipe", aliases=["es"])
+    @commands.guild_only()
+    async def editsnipe(self, ctx):
+        """Show the last edited message in this channel."""
+        s = self._edited.get(ctx.channel.id)
         if s is None or _expired(s):
-            self._edited.pop(interaction.channel_id, None)
-            return await interaction.response.send_message(
-                "ℹ️ Nothing to snipe in this channel.", ephemeral=True,
-            )
-        embed = discord.Embed(color=discord.Color.gold())
+            self._edited.pop(ctx.channel.id, None)
+            return await ctx.send("ℹ️ Nothing to snipe in this channel.")
+        embed = discord.Embed(color=discord.Color.gold(), timestamp=discord.utils.utcnow())
         embed.set_author(name=s.author_name, icon_url=s.author_avatar)
         embed.add_field(name="Before", value=(s.content or "_empty_")[:1024], inline=False)
         embed.add_field(name="After", value=(s.edited_to or "_empty_")[:1024], inline=False)
-        embed.set_footer(text=f"Edited in #{interaction.channel.name}")
-        await interaction.response.send_message(embed=embed)
+        embed.set_footer(text=f"Edited in #{ctx.channel.name}")
+        await ctx.send(embed=embed)
 
 
 async def setup(bot):

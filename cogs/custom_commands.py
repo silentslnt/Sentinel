@@ -87,7 +87,7 @@ class CustomCommands(commands.Cog):
     async def cog_load(self):
         await self.bot.db.execute(SCHEMA)
 
-    @commands.group(name="custom", invoke_without_command=True)
+    @commands.group(name="custom", aliases=["cc"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
     async def custom(self, ctx):

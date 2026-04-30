@@ -30,7 +30,7 @@ class EmbedBuilderState:
     title: Optional[str] = None
     description: Optional[str] = None
     url: Optional[str] = None
-    color: Optional[int] = None
+    color: Optional[int] = 0xFFFFFF  # white by default
     author_name: Optional[str] = None
     author_icon: Optional[str] = None
     author_url: Optional[str] = None

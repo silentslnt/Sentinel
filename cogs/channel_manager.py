@@ -42,7 +42,7 @@ class ChannelManager(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.group(name="channel", invoke_without_command=True)
+    @commands.group(name="channel", aliases=["ch"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_channels=True)
     async def channel(self, ctx):

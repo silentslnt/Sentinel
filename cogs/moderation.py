@@ -147,7 +147,7 @@ class Moderation(commands.Cog):
             return await ctx.send(f"❌ Failed to unban: {e}")
         await ctx.send(f"✅ Unbanned **{target}** (`{target.id}`)")
 
-    @commands.hybrid_command()
+    @commands.hybrid_command(aliases=["m", "timeout"])
     @commands.guild_only()
     @commands.has_permissions(moderate_members=True)
     @commands.bot_has_permissions(moderate_members=True)
@@ -182,7 +182,7 @@ class Moderation(commands.Cog):
             embed.add_field(name="Reason", value=reason)
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command()
+    @commands.hybrid_command(aliases=["um", "untimeout"])
     @commands.guild_only()
     @commands.has_permissions(moderate_members=True)
     @commands.bot_has_permissions(moderate_members=True)
@@ -198,7 +198,7 @@ class Moderation(commands.Cog):
             return await ctx.send(f"❌ Failed to unmute: {e}")
         await ctx.send(f"🔊 {member.mention} has been unmuted")
 
-    @commands.hybrid_command(aliases=["clear"])
+    @commands.hybrid_command(aliases=["clear", "c", "pg"])
     @commands.guild_only()
     @commands.has_permissions(manage_messages=True)
     @commands.bot_has_permissions(manage_messages=True)
@@ -220,7 +220,7 @@ class Moderation(commands.Cog):
         except (discord.NotFound, discord.Forbidden):
             pass
 
-    @commands.hybrid_command()
+    @commands.hybrid_command(aliases=["sm"])
     @commands.guild_only()
     @commands.has_permissions(manage_channels=True)
     @commands.bot_has_permissions(manage_channels=True)
@@ -304,7 +304,7 @@ class Moderation(commands.Cog):
         )
         await new_channel.send(embed=embed)
 
-    @commands.hybrid_command()
+    @commands.hybrid_command(aliases=["w"])
     @commands.guild_only()
     @commands.has_permissions(manage_roles=True)
     async def warn(self, ctx, member: discord.Member, *, reason: str = "No reason provided"):

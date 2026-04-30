@@ -86,7 +86,7 @@ class Counters(commands.Cog):
 
     # ---------------- commands ----------------
 
-    @commands.group(name="counter", invoke_without_command=True)
+    @commands.group(name="counter", aliases=["ct"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_channels=True)
     async def counter(self, ctx):

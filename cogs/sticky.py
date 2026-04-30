@@ -100,7 +100,7 @@ class Sticky(commands.Cog):
 
     # ---------------- commands ----------------
 
-    @commands.group(name="sticky", invoke_without_command=True)
+    @commands.group(name="sticky", aliases=["stk"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_messages=True)
     async def sticky(self, ctx):

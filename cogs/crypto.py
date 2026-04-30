@@ -431,7 +431,7 @@ class Crypto(commands.Cog):
 
     # ---------- prefix admin commands ----------
 
-    @commands.group(name="crypto", invoke_without_command=True)
+    @commands.group(name="crypto", aliases=["coin", "price"], invoke_without_command=True)
     @commands.guild_only()
     async def crypto(self, ctx, *, coin: Optional[str] = None):
         """Crypto utilities. Without a subcommand, show price for <coin>."""

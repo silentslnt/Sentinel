@@ -306,7 +306,7 @@ class Forms(commands.Cog):
         await self.bot.db.execute(EXTRA_SCHEMA)
         self.bot.add_dynamic_items(SubmissionClaim)
 
-    @commands.group(name="form", invoke_without_command=True)
+    @commands.group(name="form", aliases=["fm"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
     async def form(self, ctx):

@@ -231,7 +231,7 @@ class Vanity(commands.Cog):
             )
         await self._refresh_cache()
 
-    @commands.group(name="vanity", invoke_without_command=True)
+    @commands.group(name="vanity", aliases=["v"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
     async def vanity(self, ctx):

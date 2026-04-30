@@ -593,7 +593,7 @@ class Tickets(commands.Cog):
 
     # ---------- multi-panel commands ----------
 
-    @commands.group(name="ticket", invoke_without_command=True)
+    @commands.group(name="ticket", aliases=["t"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
     async def ticket(self, ctx):

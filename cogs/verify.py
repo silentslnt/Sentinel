@@ -451,7 +451,7 @@ class Verify(commands.Cog):
 
     # ---------- prefix commands ----------
 
-    @commands.group(name="verify", invoke_without_command=True)
+    @commands.group(name="verify", aliases=["vf"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
     async def verify(self, ctx):

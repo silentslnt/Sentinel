@@ -26,7 +26,7 @@ class Customize(commands.Cog):
             except (aiohttp.ClientError, TimeoutError):
                 return None
 
-    @commands.group(name="customize", invoke_without_command=True)
+    @commands.group(name="customize", aliases=["cz"], invoke_without_command=True)
     @commands.is_owner()
     async def customize(self, ctx):
         """Customize the bot's profile (owner only)."""

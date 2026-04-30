@@ -302,24 +302,37 @@ class Embeds(commands.Cog):
             OpenFormButton, OpenTicketPanelButton, StartVerifyEmbedButton,
         )
 
-    @commands.group(name="embed", invoke_without_command=True)
+    @commands.group(name="embed", aliases=["em"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_messages=True)
     async def embed(self, ctx):
         """Embed builder & library."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
-        await ctx.send(
-            f"🧱 **Embed builder**\n"
-            f"`{prefix}embed create <name>` · open the guided builder UI\n"
-            f"`{prefix}embed save <name> <script>` · save from raw script\n"
-            f"`{prefix}embed list` · list saved embeds\n"
-            f"`{prefix}embed preview <name>` · preview\n"
-            f"`{prefix}embed send <name> <#channel>`\n"
-            f"`{prefix}embed edit <name> <new_script>`\n"
-            f"`{prefix}embed delete <name>`\n"
-            f"`{prefix}embed raw <name>` · show script\n"
-            f"\n**Buttons:** `{prefix}embed button addlink|addrole|addopen|list|remove`",
+        embed = discord.Embed(
+            title="🧱 Embed Builder",
+            description=(
+                f"**Step 1 — open the guided builder:**\n"
+                f"`{prefix}embed create <name>`\n"
+                f"This sends a message with **12 buttons**: Title · Description · Color · Author · "
+                f"Footer · Image · Thumbnail · Add Field · Clear Fields · 👁 Preview · ✅ Save · 🗑 Discard.\n"
+                f"Each button opens a small modal for just that field. The preview embed updates in "
+                f"real time. Click **✅ Save** when done.\n\n"
+                f"**Step 2 — attach buttons to your saved embed:**\n"
+                f"`{prefix}embed button addlink <name> <label> <url> [emoji]`\n"
+                f"`{prefix}embed button addrole <name> <label> <@role> [emoji]`\n"
+                f"`{prefix}embed button addopen <name> <label> <other_embed>` · opens another embed ephemerally\n"
+                f"`{prefix}embed button addform <name> <label> <form>` · opens a form\n"
+                f"`{prefix}embed button addticket <name> <label> <panel>` · opens a ticket panel\n"
+                f"`{prefix}embed button addverify <name> [label]` · starts verification\n"
+                f"`{prefix}embed button list <name>` · `{prefix}embed button remove <name> <pos>`\n\n"
+                f"**Step 3 — send it:**\n"
+                f"`{prefix}embed send <name> <#channel>`\n\n"
+                f"**Library:** `list`, `preview`, `edit`, `delete`, `raw`, `save <name> <script>`"
+            ),
+            color=discord.Color(0xFFFFFF),
         )
+        embed.set_footer(text=f"Aliases: {prefix}em · {prefix}embed")
+        await ctx.send(embed=embed)
 
     @embed.command(name="create")
     async def create(self, ctx, name: str):

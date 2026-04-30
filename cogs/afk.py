@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 SCHEMA = """
@@ -48,10 +47,10 @@ class AFK(commands.Cog):
             for r in rows
         }
 
-    @app_commands.command(name="afk", description="Set yourself as AFK")
-    @app_commands.guild_only()
-    @app_commands.describe(reason="Optional reason shown to people who ping you")
-    async def afk(self, interaction: discord.Interaction, reason: Optional[str] = None):
+    @commands.hybrid_command(name="afk")
+    @commands.guild_only()
+    async def afk(self, ctx, *, reason: Optional[str] = None):
+        """Set yourself as AFK. Pings to you will get an AFK notice."""
         reason = (reason or "AFK")[:200]
         now = datetime.now(timezone.utc)
         await self.bot.db.execute(
@@ -59,10 +58,10 @@ class AFK(commands.Cog):
                VALUES ($1, $2, $3, $4)
                ON CONFLICT (guild_id, user_id) DO UPDATE
                SET reason = EXCLUDED.reason, set_at = EXCLUDED.set_at""",
-            interaction.guild_id, interaction.user.id, reason, now,
+            ctx.guild.id, ctx.author.id, reason, now,
         )
-        self._cache[(interaction.guild_id, interaction.user.id)] = {"reason": reason, "set_at": now}
-        await interaction.response.send_message(f"💤 You're now AFK: **{reason}**", ephemeral=False)
+        self._cache[(ctx.guild.id, ctx.author.id)] = {"reason": reason, "set_at": now}
+        await ctx.send(f"💤 You're now AFK: **{reason}**")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

@@ -16,7 +16,7 @@ class Configure(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.group(name="configure", invoke_without_command=True)
+    @commands.group(name="configure", aliases=["config", "conf"], invoke_without_command=True)
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
     async def configure(self, ctx):
