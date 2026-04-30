@@ -121,6 +121,80 @@ class OpenEmbedButton(discord.ui.DynamicItem[discord.ui.Button],
     async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match):
         return cls(match["name"], label=item.label or "Open", style=item.style, emoji=item.emoji)
 
+
+class OpenFormButton(discord.ui.DynamicItem[discord.ui.Button],
+                     template=r"sentinel:formopen:(?P<name>[a-z0-9_-]{1,32})"):
+    def __init__(self, name: str, label: str = "Open Form",
+                 style: discord.ButtonStyle = discord.ButtonStyle.primary,
+                 emoji=None):
+        super().__init__(
+            discord.ui.Button(
+                style=style, label=label, emoji=emoji,
+                custom_id=f"sentinel:formopen:{name}",
+            )
+        )
+        self.name = name
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match):
+        return cls(match["name"], label=item.label or "Open Form", style=item.style, emoji=item.emoji)
+
+    async def callback(self, interaction: discord.Interaction):
+        from cogs.forms import render_form_for
+        await render_form_for(interaction.client, interaction, self.name)
+
+
+class OpenTicketPanelButton(discord.ui.DynamicItem[discord.ui.Button],
+                            template=r"sentinel:tpanelopen:(?P<name>[a-z0-9_-]{1,32})"):
+    """Used as an embed-button to open a specific named ticket panel."""
+
+    def __init__(self, name: str, label: str = "Open Ticket",
+                 style: discord.ButtonStyle = discord.ButtonStyle.primary,
+                 emoji=None):
+        super().__init__(
+            discord.ui.Button(
+                style=style, label=label, emoji=emoji,
+                custom_id=f"sentinel:tpanelopen:{name}",
+            )
+        )
+        self.name = name
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match):
+        return cls(match["name"], label=item.label or "Open Ticket", style=item.style, emoji=item.emoji)
+
+    async def callback(self, interaction: discord.Interaction):
+        cog = interaction.client.get_cog("Tickets")
+        if cog is None:
+            return await interaction.response.send_message("❌ Tickets unavailable.", ephemeral=True)
+        await cog.open_ticket_for(interaction, panel_name=self.name)
+
+
+class StartVerifyEmbedButton(discord.ui.DynamicItem[discord.ui.Button],
+                             template=r"sentinel:emverify:(?P<gid>\d+)"):
+    """Embed-attachable verify-start button (forwards to the Verify cog)."""
+
+    def __init__(self, gid: int, label: str = "Verify",
+                 style: discord.ButtonStyle = discord.ButtonStyle.success,
+                 emoji=None):
+        super().__init__(
+            discord.ui.Button(
+                style=style, label=label, emoji=emoji,
+                custom_id=f"sentinel:emverify:{gid}",
+            )
+        )
+        self.gid = gid
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match):
+        return cls(int(match["gid"]), label=item.label or "Verify", style=item.style, emoji=item.emoji)
+
+    async def callback(self, interaction: discord.Interaction):
+        cog = interaction.client.get_cog("Verify")
+        if cog is None:
+            return await interaction.response.send_message("❌ Verify unavailable.", ephemeral=True)
+        await cog.start_verification(interaction)
+
     async def callback(self, interaction: discord.Interaction):
         bot = interaction.client
         row = await bot.db.fetchrow(
@@ -188,6 +262,15 @@ async def build_view(bot, guild_id: int, embed_name: str) -> Optional[discord.ui
                 continue
         elif r["style"] == "open":
             view.add_item(OpenEmbedButton(r["target"], label=r["label"], style=style_color, emoji=emoji))
+        elif r["style"] == "form":
+            view.add_item(OpenFormButton(r["target"], label=r["label"], style=style_color, emoji=emoji))
+        elif r["style"] == "ticket":
+            view.add_item(OpenTicketPanelButton(r["target"], label=r["label"], style=style_color, emoji=emoji))
+        elif r["style"] == "verify":
+            try:
+                view.add_item(StartVerifyEmbedButton(int(r["target"]), label=r["label"], style=style_color, emoji=emoji))
+            except (TypeError, ValueError):
+                continue
         else:  # plain (decorative)
             view.add_item(discord.ui.Button(
                 style=style_color, label=r["label"], disabled=True, emoji=emoji,
@@ -214,7 +297,10 @@ class Embeds(commands.Cog):
     async def cog_load(self):
         await self.bot.db.execute(SCHEMA)
         # Register dynamic item handlers globally so saved embeds keep working after restarts.
-        self.bot.add_dynamic_items(RoleToggleButton, OpenEmbedButton)
+        self.bot.add_dynamic_items(
+            RoleToggleButton, OpenEmbedButton,
+            OpenFormButton, OpenTicketPanelButton, StartVerifyEmbedButton,
+        )
 
     @commands.group(name="embed", invoke_without_command=True)
     @commands.guild_only()
@@ -390,6 +476,48 @@ class Embeds(commands.Cog):
             return await ctx.send(f"❌ No embed named `{target}` to open.")
         await self._add_button(ctx.guild.id, name, "open", "grey", label, target, emoji=emoji)
         await ctx.send(f"✅ Added button `{label}` → opens `{target}` ephemerally.")
+
+    @button.command(name="addform")
+    async def add_form(self, ctx, name: str, label: str, form_name: str,
+                       color: str = "blurple", emoji: Optional[str] = None):
+        """Add a button that opens a form ephemerally."""
+        if await fetch_script(self.bot, ctx.guild.id, name) is None:
+            return await ctx.send(f"❌ No embed named `{name}`.")
+        from cogs.forms import fetch_form
+        if await fetch_form(self.bot, ctx.guild.id, form_name) is None:
+            return await ctx.send(f"❌ No form `{form_name}`.")
+        if color not in COLOR_STYLES:
+            return await ctx.send(f"❌ Color must be one of: {', '.join(COLOR_STYLES)}")
+        await self._add_button(ctx.guild.id, name, "form", color, label, form_name, emoji=emoji)
+        await ctx.send(f"✅ Added form button `{label}` → opens form `{form_name}`.")
+
+    @button.command(name="addticket")
+    async def add_ticket(self, ctx, name: str, label: str, panel_name: str,
+                         color: str = "blurple", emoji: Optional[str] = None):
+        """Add a button that opens a named ticket panel."""
+        if await fetch_script(self.bot, ctx.guild.id, name) is None:
+            return await ctx.send(f"❌ No embed named `{name}`.")
+        panel = await self.bot.db.fetchrow(
+            "SELECT 1 FROM ticket_panels WHERE guild_id=$1 AND name=$2",
+            ctx.guild.id, panel_name,
+        )
+        if panel is None:
+            return await ctx.send(f"❌ No ticket panel `{panel_name}`.")
+        if color not in COLOR_STYLES:
+            return await ctx.send(f"❌ Color must be one of: {', '.join(COLOR_STYLES)}")
+        await self._add_button(ctx.guild.id, name, "ticket", color, label, panel_name, emoji=emoji)
+        await ctx.send(f"✅ Added ticket button `{label}` → panel `{panel_name}`.")
+
+    @button.command(name="addverify")
+    async def add_verify(self, ctx, name: str, label: str = "Verify",
+                         color: str = "green", emoji: Optional[str] = "✅"):
+        """Add a button that starts the verification flow."""
+        if await fetch_script(self.bot, ctx.guild.id, name) is None:
+            return await ctx.send(f"❌ No embed named `{name}`.")
+        if color not in COLOR_STYLES:
+            return await ctx.send(f"❌ Color must be one of: {', '.join(COLOR_STYLES)}")
+        await self._add_button(ctx.guild.id, name, "verify", color, label, str(ctx.guild.id), emoji=emoji)
+        await ctx.send(f"✅ Added verify button `{label}`.")
 
     @button.command(name="list")
     async def button_list(self, ctx, name: str):
