@@ -137,7 +137,7 @@ class Sentinel(commands.Bot):
         # so the slash menu stays clean (Bleed-style: simple actionable commands only).
         for cmd in list(self.tree.get_commands()):
             if cmd.name not in SLASH_ALLOWLIST:
-                self.tree.remove_command(cmd.name, type=cmd.type)
+                self.tree.remove_command(cmd.name)
                 log.info("Pruned %s from slash tree (not on allowlist)", cmd.name)
 
         # Sync application (slash) commands globally on boot.
