@@ -12,6 +12,8 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
+from utils.checks import is_guild_admin
+
 log = logging.getLogger("sentinel.invites")
 
 SCHEMA = """
@@ -215,7 +217,7 @@ class InviteTracker(commands.Cog):
 
     @commands.command(name="addinvites")
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def addinvites(self, ctx, member: discord.Member, amount: int):
         """Add bonus invites to a member."""
         await self.bot.db.execute(
@@ -231,7 +233,7 @@ class InviteTracker(commands.Cog):
 
     @commands.command(name="removeinvites")
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def removeinvites(self, ctx, member: discord.Member, amount: int):
         """Remove invites from a member (adds to fake count)."""
         await self.bot.db.execute(
@@ -247,7 +249,7 @@ class InviteTracker(commands.Cog):
 
     @commands.command(name="clearinvites", aliases=["resetinvites"])
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def clearinvites(self, ctx, *, target: str):
         """Reset invites. Usage: clearinvites all | clearinvites @member"""
         if target.lower() == "all":

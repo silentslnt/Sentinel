@@ -17,6 +17,8 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
+from utils.checks import is_guild_admin
+
 from utils import embed_script
 from cogs.embeds import build_view, fetch_script
 
@@ -89,7 +91,7 @@ class CustomCommands(commands.Cog):
 
     @commands.group(name="custom", aliases=["cc"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def custom(self, ctx):
         """Custom commands."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)

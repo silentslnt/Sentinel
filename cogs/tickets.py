@@ -24,6 +24,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from utils.checks import is_guild_admin
+
 log = logging.getLogger("sentinel.tickets")
 
 SCHEMA = """
@@ -533,7 +535,7 @@ class Tickets(commands.Cog):
 
     @commands.command(name="ticketsetup")
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def ticketsetup(
         self,
         ctx,
@@ -555,7 +557,7 @@ class Tickets(commands.Cog):
 
     @commands.command(name="settranscript")
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def settranscript(self, ctx, channel: discord.TextChannel):
         """Set the transcript log channel for the default panel."""
         await self._legacy_upsert(ctx.guild.id, transcript_channel_id=channel.id)
@@ -563,7 +565,7 @@ class Tickets(commands.Cog):
 
     @commands.command(name="panel")
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def legacy_panel(self, ctx, channel: discord.TextChannel):
         """Post the default ticket panel button in a channel."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
@@ -595,7 +597,7 @@ class Tickets(commands.Cog):
 
     @commands.group(name="ticket", aliases=["t"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def ticket(self, ctx):
         """Multi-panel ticket configuration."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)

@@ -26,6 +26,8 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
+from utils.checks import is_guild_admin
+
 log = logging.getLogger("sentinel.forms")
 
 SCHEMA = """
@@ -308,7 +310,7 @@ class Forms(commands.Cog):
 
     @commands.group(name="form", aliases=["fm"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def form(self, ctx):
         """Forms — guided ephemeral data-collection embeds."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)

@@ -19,6 +19,8 @@ import logging
 import discord
 from discord.ext import commands, tasks
 
+from utils.checks import is_guild_admin
+
 log = logging.getLogger("sentinel.vanity")
 
 SCHEMA = """
@@ -233,7 +235,7 @@ class Vanity(commands.Cog):
 
     @commands.group(name="vanity", aliases=["v"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def vanity(self, ctx):
         """Vanity / server-tag role automation."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)

@@ -18,6 +18,7 @@ import discord
 from discord.ext import commands
 
 from utils import embed_script
+from utils.checks import is_guild_admin
 
 log = logging.getLogger("sentinel.greet")
 
@@ -119,7 +120,7 @@ class Greet(commands.Cog):
 
     @commands.command(name="greet")
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def greet(self, ctx, channel: discord.TextChannel, delete_after: int, *, message: str):
         """Set a greet message for a channel.
 
@@ -150,7 +151,7 @@ class Greet(commands.Cog):
 
     @commands.command(name="disablegreet")
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def disablegreet(self, ctx, channel: discord.TextChannel):
         """Remove the greet from a channel."""
         result = await self.bot.db.execute(
@@ -165,7 +166,7 @@ class Greet(commands.Cog):
 
     @commands.command(name="greetchannels")
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def greetchannels(self, ctx):
         """List all channels with greet enabled."""
         rows = await self.bot.db.fetch(

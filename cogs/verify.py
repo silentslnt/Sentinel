@@ -27,6 +27,8 @@ import aiohttp
 import discord
 from discord.ext import commands
 
+from utils.checks import is_guild_admin
+
 log = logging.getLogger("sentinel.verify")
 
 SCHEMA = """
@@ -453,7 +455,7 @@ class Verify(commands.Cog):
 
     @commands.group(name="verify", aliases=["vf"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def verify(self, ctx):
         """Verification configuration."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)

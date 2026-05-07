@@ -8,6 +8,8 @@ from __future__ import annotations
 import logging as pylog
 from typing import Optional
 
+from utils.checks import is_guild_admin
+
 import discord
 from discord.ext import commands
 
@@ -239,7 +241,7 @@ class Logging(commands.Cog):
 
     @commands.group(name="log", aliases=["logs", "logging"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_guild=True)
+    @commands.check(is_guild_admin)
     async def log_group(self, ctx):
         """Event logging configuration."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)

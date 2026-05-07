@@ -51,6 +51,7 @@ INITIAL_COGS = (
     "cogs.snipe",
     "cogs.guildlock",
     "cogs.vanity",
+    "cogs.admin",
     "cogs.invites",        # must load before system_messages and greet
     "cogs.system_messages",
     "cogs.greet",
@@ -154,6 +155,8 @@ class Sentinel(commands.Bot):
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandNotFound):
             return
+        if isinstance(error, commands.CheckFailure):
+            return await ctx.send(f"❌ {error}")
         if isinstance(error, commands.MissingPermissions):
             return await ctx.send("❌ You don't have permission to use this command.")
         if isinstance(error, commands.BotMissingPermissions):
