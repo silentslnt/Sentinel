@@ -29,17 +29,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("sentinel")
 
-# Allowlist for slash commands. Everything else stays accessible via prefix only,
-# so the slash menu mirrors Bleed's vibe: short, basic, user-facing actions.
-SLASH_ALLOWLIST = frozenset({
-    # General
-    "help", "afk", "snipe", "editsnipe", "crypto",
-    # Moderation basics (already hybrid)
-    "ban", "kick", "unban", "mute", "unmute", "warn",
-    "purge", "clear", "slowmode", "lock", "unlock", "nuke",
-    # Ticket lifecycle (Bleed parity)
-    "add", "claim", "unclaim", "close", "transcript",
-})
+# Only /help is exposed as a slash command. Everything else is prefix-only.
+SLASH_ALLOWLIST = frozenset({"help"})
 
 INITIAL_COGS = (
     "cogs.configure",
