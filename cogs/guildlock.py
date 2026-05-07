@@ -122,14 +122,19 @@ class GuildLock(commands.Cog):
             g = self.bot.get_guild(gid)
             return f"**{g.name}** (`{gid}`)" if g else f"`{gid}`"
 
-        lines = [f"Home: {_guild_label(HOME_GUILD_ID)}"]
         extras = sorted(self._allowed - {HOME_GUILD_ID})
+        lines = [f"**Home:** {_guild_label(HOME_GUILD_ID)}"]
         if extras:
-            lines.append("Whitelisted:")
+            lines.append(f"**Whitelisted ({len(extras)}):**")
             lines.extend(f"• {_guild_label(gid)}" for gid in extras)
         else:
             lines.append("_No additional whitelisted guilds._")
-        await ctx.send("\n".join(lines))
+        embed = discord.Embed(
+            title="Guild Whitelist",
+            description="\n".join(lines),
+            color=discord.Color.default(),
+        )
+        await ctx.send(embed=embed)
 
     @whitelist.command(name="leave")
     @commands.is_owner()
