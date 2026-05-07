@@ -131,18 +131,15 @@ class Booster(commands.Cog):
         if role is None or role >= ctx.guild.me.top_role:
             return await ctx.send("❌ Role missing or above my top role.")
         msg = await ctx.send("⏳ Syncing…")
-        granted = revoked = 0
+        granted = 0
         for member in ctx.guild.members:
-            try:
-                if member.premium_since and role not in member.roles:
+            if member.premium_since and role not in member.roles:
+                try:
                     await member.add_roles(role, reason="Booster sync")
                     granted += 1
-                elif not member.premium_since and role in member.roles:
-                    await member.remove_roles(role, reason="Booster sync (revoke)")
-                    revoked += 1
-            except (discord.Forbidden, discord.HTTPException):
-                continue
-        await msg.edit(content=f"✅ Synced — granted {granted}, revoked {revoked}.")
+                except (discord.Forbidden, discord.HTTPException):
+                    continue
+        await msg.edit(content=f"✅ Synced — granted role to {granted} booster(s).")
 
 
 async def setup(bot):
