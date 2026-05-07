@@ -82,8 +82,17 @@ class RobloxCog(commands.Cog):
                     headers={"User-Agent": "Mozilla/5.0"},
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
-                    data = await resp.json(content_type=None)
+                    log.info("Roblox API status: %s", resp.status)
+                    text = await resp.text()
+                    log.info("Roblox API response: %.300s", text)
+                    if resp.status != 200:
+                        log.warning("Roblox API returned %s", resp.status)
+                        return self._cache
+                    import json as _json
+                    data = _json.loads(text)
             games = data.get("games", [])
+            if not games:
+                log.warning("Roblox API returned 0 games. Keys: %s", list(data.keys()))
             self._cache = games
             self._cache_ts = now
             return games

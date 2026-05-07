@@ -138,7 +138,7 @@ class Sentinel(commands.Bot):
         for cmd in list(self.tree.get_commands()):
             if cmd.name not in SLASH_ALLOWLIST:
                 self.tree.remove_command(cmd.name)
-                log.info("Pruned %s from slash tree (not on allowlist)", cmd.name)
+                log.debug("Pruned %s from slash tree (not on allowlist)", cmd.name)
 
         # Sync application (slash) commands globally on boot.
         # Discord can take up to ~1 hour to propagate global syncs the first time.
