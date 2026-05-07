@@ -83,17 +83,15 @@ class Help(commands.Cog):
         sections = self._sections()
         total_cmds = sum(len(cmds) for _, cmds in sections.values())
 
-        lines = []
-        for _, (label, cmds) in sorted(sections.items()):
-            lines.append(f"**{label}** — {len(cmds)} command{'s' if len(cmds) != 1 else ''}")
+        tags = "  ".join(f"`{label}`" for _, (label, _) in sorted(sections.items()))
 
         embed = discord.Embed(
             title=self.bot.user.name,
-            description="\n".join(lines),
+            description=tags,
             color=discord.Color.default(),
         )
         embed.set_thumbnail(url=self.bot.user.display_avatar.url)
-        embed.set_footer(text=f"{total_cmds} commands across {len(sections)} sections · {prefix}help <section> or {prefix}help <command>")
+        embed.set_footer(text=f"{total_cmds} commands · {prefix}help <section> · {prefix}help <command>")
         await ctx.send(embed=embed)
 
     async def _section_detail(self, ctx, label: str, cmds: list[commands.Command], prefix: str):
