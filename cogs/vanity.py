@@ -151,6 +151,12 @@ class Vanity(commands.Cog):
                     await self._send_award_message(member)
         else:
             to_remove = [r for r in guild_roles if r.id in member_role_ids]
+            # Don't strip a role that's also the booster award role from an active booster.
+            if member.premium_since is not None:
+                booster_cog = self.bot.cogs.get("Booster")
+                booster_role_id = booster_cog._cache.get(guild_id) if booster_cog else None
+                if booster_role_id:
+                    to_remove = [r for r in to_remove if r.id != booster_role_id]
             if to_remove:
                 try:
                     await member.remove_roles(*to_remove, reason="Vanity no longer matches")
