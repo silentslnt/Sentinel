@@ -239,7 +239,12 @@ class StocksCog(commands.Cog):
                 try:
                     msg = await channel.fetch_message(r["message_id"])
                     await msg.edit(embed=self._build_stock_embed(tickers, quotes))
-                except (discord.NotFound, discord.HTTPException):
+                except discord.NotFound:
+                    await self.bot.db.execute(
+                        "DELETE FROM stock_panels WHERE guild_id=$1 AND channel_id=$2",
+                        r["guild_id"], r["channel_id"],
+                    )
+                except discord.HTTPException:
                     pass
 
         forex_rows = await self.bot.db.fetch(
@@ -255,7 +260,12 @@ class StocksCog(commands.Cog):
                 try:
                     msg = await channel.fetch_message(r["message_id"])
                     await msg.edit(embed=embed)
-                except (discord.NotFound, discord.HTTPException):
+                except discord.NotFound:
+                    await self.bot.db.execute(
+                        "DELETE FROM forex_panels WHERE guild_id=$1 AND channel_id=$2",
+                        r["guild_id"], r["channel_id"],
+                    )
+                except discord.HTTPException:
                     pass
 
     @_refresh_panels.before_loop

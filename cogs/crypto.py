@@ -360,7 +360,13 @@ class Crypto(commands.Cog):
                 continue
             try:
                 msg = await channel.fetch_message(r["message_id"])
-            except (discord.NotFound, discord.Forbidden):
+            except discord.NotFound:
+                await self.bot.db.execute(
+                    "DELETE FROM crypto_panels WHERE guild_id=$1 AND channel_id=$2",
+                    r["guild_id"], r["channel_id"],
+                )
+                continue
+            except discord.Forbidden:
                 continue
             coin_ids = [c.strip() for c in r["coins"].split(",") if c.strip()]
             embed = self._build_panel_embed(coin_ids, snap)

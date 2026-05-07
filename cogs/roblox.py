@@ -149,7 +149,12 @@ class RobloxCog(commands.Cog):
             try:
                 msg = await channel.fetch_message(r["message_id"])
                 await msg.edit(embed=embed)
-            except (discord.NotFound, discord.HTTPException):
+            except discord.NotFound:
+                await self.bot.db.execute(
+                    "DELETE FROM roblox_panels WHERE guild_id=$1 AND channel_id=$2",
+                    r["guild_id"], r["channel_id"],
+                )
+            except discord.HTTPException:
                 pass
 
     @_refresh_panels.before_loop
