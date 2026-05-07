@@ -51,7 +51,9 @@ INITIAL_COGS = (
     "cogs.snipe",
     "cogs.guildlock",
     "cogs.vanity",
+    "cogs.invites",        # must load before system_messages and greet
     "cogs.system_messages",
+    "cogs.greet",
     "cogs.booster",
     "cogs.embeds",
     "cogs.forms",

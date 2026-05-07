@@ -1,4 +1,4 @@
-"""Help command. Lists every command in the bot — hybrid, prefix, and slash-only."""
+"""Help command — Bleed-style category embed with per-command descriptions."""
 from __future__ import annotations
 
 from typing import Iterable
@@ -9,29 +9,26 @@ from discord.ext import commands
 
 
 def _walk_app_commands(tree: app_commands.CommandTree) -> Iterable[app_commands.Command]:
-    """Yield every leaf app-command in the tree (descending into groups)."""
     for cmd in tree.walk_commands():
         if isinstance(cmd, app_commands.Command):
             yield cmd
 
 
+def _short(text: str | None, limit: int = 60) -> str:
+    if not text:
+        return "No description."
+    first_line = text.strip().splitlines()[0]
+    return first_line if len(first_line) <= limit else first_line[:limit - 1] + "…"
+
+
 class Help(commands.Cog):
-    """❓ Help command"""
+    """Help command"""
 
     def __init__(self, bot):
         self.bot = bot
 
     def _prefix(self, ctx) -> str:
         return self.bot.guild_config.get_prefix(ctx.guild.id if ctx.guild else None)
-
-    def _all_command_names(self) -> set[str]:
-        names: set[str] = set()
-        for c in self.bot.commands:
-            if not c.hidden:
-                names.add(c.qualified_name)
-        for c in _walk_app_commands(self.bot.tree):
-            names.add(c.qualified_name)
-        return names
 
     @commands.hybrid_command()
     async def help(self, ctx, *, command_name: str = None):
@@ -42,74 +39,86 @@ class Help(commands.Cog):
             return await self._command_detail(ctx, command_name.lower(), prefix)
 
         embed = discord.Embed(
-            title=f"{self.bot.user.name} — Help",
-            description=(
-                f"Use `{prefix}help <command>` for details.\n"
-                f"Slash commands are also available — start typing `/` in any channel."
-            ),
-            color=discord.Color.blurple(),
+            title=f"{self.bot.user.name}",
+            description=f"Use `{prefix}help <command>` for detailed usage.",
+            color=discord.Color.default(),
         )
         embed.set_thumbnail(url=self.bot.user.display_avatar.url)
 
-        # Group by cog. Build a name set per cog covering both prefix and slash commands.
-        per_cog: dict[str, set[str]] = {}
+        # Group prefix commands by cog, skip hidden
+        per_cog: dict[str, list[commands.Command]] = {}
         for cog_name, cog in self.bot.cogs.items():
             if cog_name == "Help":
                 continue
-            for cmd in cog.get_commands():
-                if not cmd.hidden:
-                    per_cog.setdefault(cog_name, set()).add(cmd.name)
-            # App-commands are attached to the tree, not the cog; map by binding.
-            for app_cmd in _walk_app_commands(self.bot.tree):
-                if getattr(app_cmd, "binding", None) is cog:
-                    per_cog.setdefault(cog_name, set()).add(app_cmd.qualified_name)
+            cmds = [c for c in cog.get_commands() if not c.hidden]
+            if cmds:
+                per_cog[cog_name] = sorted(cmds, key=lambda c: c.name)
 
         for cog_name in sorted(per_cog):
             cog = self.bot.get_cog(cog_name)
-            heading = cog.description or cog_name if cog else cog_name
-            cmds = sorted(per_cog[cog_name])
-            embed.add_field(
-                name=heading,
-                value=", ".join(f"`{n}`" for n in cmds),
-                inline=False,
-            )
+            label = cog.description or cog_name if cog else cog_name
+            # Strip emoji prefix from cog description if present
+            label = label.split(" ", 1)[-1] if label and label[0] not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ" else label
 
-        embed.set_footer(text=f"Total commands: {len(self._all_command_names())}")
+            lines = []
+            for cmd in per_cog[cog_name]:
+                lines.append(f"`{prefix}{cmd.name}` — {_short(cmd.help or cmd.brief)}")
+                # Show subcommands for groups
+                if isinstance(cmd, commands.Group):
+                    for sub in sorted(cmd.commands, key=lambda c: c.name):
+                        if not sub.hidden:
+                            lines.append(f"  `{prefix}{cmd.name} {sub.name}` — {_short(sub.help or sub.brief)}")
+
+            if lines:
+                embed.add_field(name=label, value="\n".join(lines), inline=False)
+
+        total = sum(len(v) for v in per_cog.values())
+        embed.set_footer(text=f"{total} commands · {prefix}help <command> for usage")
         await ctx.send(embed=embed)
 
     async def _command_detail(self, ctx, name: str, prefix: str):
-        # Prefix/hybrid path
+        # Support "group sub" lookup
         cmd = self.bot.get_command(name)
         if cmd is not None:
             embed = discord.Embed(
-                title=f"Help: {cmd.qualified_name}",
-                description=cmd.help or "No description available",
-                color=discord.Color.blurple(),
+                title=f"{prefix}{cmd.qualified_name}",
+                description=cmd.help or "No description.",
+                color=discord.Color.default(),
             )
             usage = f"{prefix}{cmd.qualified_name}"
             if cmd.signature:
                 usage += f" {cmd.signature}"
             embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
             if cmd.aliases:
-                embed.add_field(name="Aliases", value=", ".join(f"`{a}`" for a in cmd.aliases), inline=False)
-            return await ctx.send(embed=embed)
+                embed.add_field(name="Aliases", value=" · ".join(f"`{a}`" for a in cmd.aliases), inline=False)
+            if isinstance(cmd, commands.Group):
+                subs = sorted([c for c in cmd.commands if not c.hidden], key=lambda c: c.name)
+                if subs:
+                    embed.add_field(
+                        name="Subcommands",
+                        value="\n".join(f"`{prefix}{cmd.name} {s.name}` — {_short(s.help or s.brief)}" for s in subs),
+                        inline=False,
+                    )
+            await ctx.send(embed=embed)
+            return
 
-        # Slash-only path
+        # Slash-only fallback
         for app_cmd in _walk_app_commands(self.bot.tree):
             if app_cmd.qualified_name.lower() == name:
                 embed = discord.Embed(
-                    title=f"Help: /{app_cmd.qualified_name}",
-                    description=app_cmd.description or "No description available",
-                    color=discord.Color.blurple(),
+                    title=f"/{app_cmd.qualified_name}",
+                    description=app_cmd.description or "No description.",
+                    color=discord.Color.default(),
                 )
                 params = " ".join(
                     f"<{p.name}>" if p.required else f"[{p.name}]"
                     for p in app_cmd.parameters
                 )
                 embed.add_field(name="Usage", value=f"`/{app_cmd.qualified_name} {params}`".strip(), inline=False)
-                return await ctx.send(embed=embed)
+                await ctx.send(embed=embed)
+                return
 
-        await ctx.send(f"❌ Command `{name}` not found.")
+        await ctx.send(f"No command named `{name}` found.")
 
 
 async def setup(bot):

@@ -35,7 +35,7 @@ CREATE INDEX IF NOT EXISTS system_messages_lookup
 EVENTS = ("welcome", "goodbye", "boost")
 
 
-async def _dispatch(bot, event: str, member: discord.Member):
+async def _dispatch(bot, event: str, member: discord.Member, inviter=None, invite_code=None):
     rows = await bot.db.fetch(
         "SELECT * FROM system_messages WHERE guild_id=$1 AND event=$2",
         member.guild.id, event,
@@ -46,6 +46,7 @@ async def _dispatch(bot, event: str, member: discord.Member):
             continue
         rendered = embed_script.render(
             row["script"], user=member, guild=member.guild, channel=channel,
+            inviter=inviter, invite_code=invite_code,
         )
         if rendered.is_empty:
             continue
@@ -81,10 +82,10 @@ class SystemMessages(commands.Cog):
         await self.bot.db.execute(SCHEMA)
 
     @commands.Cog.listener()
-    async def on_member_join(self, member: discord.Member):
+    async def on_member_join_tracked(self, member: discord.Member, inviter, invite_code):
         if member.bot:
             return
-        await _dispatch(self.bot, "welcome", member)
+        await _dispatch(self.bot, "welcome", member, inviter=inviter, invite_code=invite_code)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):

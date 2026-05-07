@@ -54,7 +54,9 @@ def _color(value: str) -> Optional[discord.Color]:
 
 def substitute_variables(text: str, *, user: Optional[discord.abc.User] = None,
                          guild: Optional[discord.Guild] = None,
-                         channel: Optional[discord.abc.GuildChannel] = None) -> str:
+                         channel: Optional[discord.abc.GuildChannel] = None,
+                         inviter: Optional[discord.abc.User] = None,
+                         invite_code: Optional[str] = None) -> str:
     if not text:
         return text
     repl: dict[str, str] = {}
@@ -85,6 +87,20 @@ def substitute_variables(text: str, *, user: Optional[discord.abc.User] = None,
             "{channel.id}": str(channel.id),
             "{channel.mention}": getattr(channel, "mention", ""),
         })
+    if inviter is not None:
+        repl.update({
+            "{inviter}": inviter.mention,
+            "{inviter.mention}": inviter.mention,
+            "{inviter.name}": inviter.name,
+            "{inviter.id}": str(inviter.id),
+            "{inviter.tag}": str(inviter),
+            "{inviter.avatar}": inviter.display_avatar.url,
+        })
+    else:
+        for k in ("{inviter}", "{inviter.mention}", "{inviter.name}",
+                  "{inviter.id}", "{inviter.tag}", "{inviter.avatar}"):
+            repl[k] = "Unknown"
+    repl["{invite.code}"] = invite_code or "unknown"
     for k, v in repl.items():
         text = text.replace(k, v)
     return text
@@ -211,6 +227,10 @@ def parse(script: str) -> ParsedScript:
     return result
 
 
-def render(script: str, **vars) -> ParsedScript:
+def render(script: str, *, user=None, guild=None, channel=None,
+           inviter=None, invite_code=None) -> ParsedScript:
     """Substitute variables, then parse."""
-    return parse(substitute_variables(script, **vars))
+    return parse(substitute_variables(
+        script, user=user, guild=guild, channel=channel,
+        inviter=inviter, invite_code=invite_code,
+    ))
