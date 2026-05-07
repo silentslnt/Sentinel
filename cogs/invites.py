@@ -140,6 +140,7 @@ class InviteTracker(commands.Cog):
 
     @commands.command(name="invites", aliases=["i"])
     @commands.guild_only()
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def invites(self, ctx, member: discord.Member = None):
         """Show invite stats for a member."""
         target = member or ctx.author
@@ -156,6 +157,7 @@ class InviteTracker(commands.Cog):
 
     @commands.command(name="inviter")
     @commands.guild_only()
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def inviter_cmd(self, ctx, member: discord.Member = None):
         """Show who invited a member."""
         target = member or ctx.author
@@ -174,6 +176,7 @@ class InviteTracker(commands.Cog):
 
     @commands.command(name="invited")
     @commands.guild_only()
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def invited(self, ctx, member: discord.Member = None):
         """Show who a member has invited."""
         target = member or ctx.author
@@ -194,6 +197,7 @@ class InviteTracker(commands.Cog):
 
     @commands.command(name="inviteinfo", aliases=["invitecodes", "invitecode", "ic"])
     @commands.guild_only()
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def inviteinfo(self, ctx, member: discord.Member = None):
         """Show active invite codes for a member."""
         target = member or ctx.author
@@ -276,6 +280,7 @@ class InviteTracker(commands.Cog):
 
     @commands.command(name="resetmyinvites", aliases=["rmi", "clearmyinvites"])
     @commands.guild_only()
+    @commands.cooldown(1, 30, commands.BucketType.user)
     async def resetmyinvites(self, ctx):
         """Reset your own invite stats."""
         await self.bot.db.execute(

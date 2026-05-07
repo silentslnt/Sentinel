@@ -108,7 +108,7 @@ class Sticky(commands.Cog):
         """Sticky messages."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
         await ctx.send(
-            f"📌 **Sticky messages**\n"
+            f"**Sticky messages**\n"
             f"`{prefix}sticky set <#channel> <text or embed script>`\n"
             f"`{prefix}sticky setembed <#channel> <embed_name>`\n"
             f"`{prefix}sticky remove <#channel>`\n"
@@ -132,7 +132,7 @@ class Sticky(commands.Cog):
             "embed_name": None,
             "last_message_id": None,
         }
-        await ctx.send(f"📌 Sticky set in {channel.mention}.")
+        await ctx.send(f"Sticky set in {channel.mention}.")
         self._pending[channel.id] = asyncio.create_task(self._repost(channel))
 
     @sticky.command(name="setembed")
@@ -154,7 +154,7 @@ class Sticky(commands.Cog):
             "embed_name": embed_name,
             "last_message_id": None,
         }
-        await ctx.send(f"📌 Sticky embed `{embed_name}` set in {channel.mention}.")
+        await ctx.send(f"Sticky embed `{embed_name}` set in {channel.mention}.")
         self._pending[channel.id] = asyncio.create_task(self._repost(channel))
 
     @sticky.command(name="remove")

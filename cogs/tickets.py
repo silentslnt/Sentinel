@@ -501,7 +501,7 @@ class Tickets(commands.Cog):
         cfg = await self._panel_or_legacy(interaction.guild_id, ticket_row["panel_name"] or "default") or {}
         if not already_responded:
             await interaction.response.send_message(
-                f"🔒 Closing{f' — {reason}' if reason else ''}…",
+                f"Closing{f' — {reason}' if reason else ''}…",
             )
 
         if cfg.get("transcript_channel_id"):

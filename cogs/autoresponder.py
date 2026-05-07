@@ -102,7 +102,7 @@ class Autoresponder(commands.Cog):
         """Auto-respond to messages."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
         await ctx.send(
-            f"💬 **Auto-responder**\n"
+            f"**Auto-responder**\n"
             f"`{prefix}autoresponder add <trigger> | <response>` (use `|` to separate)\n"
             f"`{prefix}autoresponder addexact <trigger> | <response>`\n"
             f"`{prefix}autoresponder remove <id or trigger>`\n"

@@ -25,6 +25,7 @@ class Help(commands.Cog):
         return self.bot.guild_config.get_prefix(ctx.guild.id if ctx.guild else None)
 
     @commands.hybrid_command()
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def help(self, ctx, *, command_name: str = None):
         """Show help for a command or list all categories."""
         prefix = self._prefix(ctx)

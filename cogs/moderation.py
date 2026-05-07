@@ -212,10 +212,10 @@ class Moderation(commands.Cog):
         if ctx.interaction is not None:
             await ctx.defer(ephemeral=True)
             deleted = await ctx.channel.purge(limit=amount)
-            return await ctx.send(f"🗑️ Cleared {len(deleted)} messages", ephemeral=True)
+            return await ctx.send(f"Cleared {len(deleted)} messages", ephemeral=True)
 
         deleted = await ctx.channel.purge(limit=amount + 1)
-        msg = await ctx.send(f"🗑️ Cleared {len(deleted) - 1} messages")
+        msg = await ctx.send(f"Cleared {len(deleted) - 1} messages")
         await asyncio.sleep(3)
         try:
             await msg.delete()
@@ -247,7 +247,7 @@ class Moderation(commands.Cog):
             send_messages=False,
             reason=f"Locked by {ctx.author}",
         )
-        await ctx.send(f"🔒 {channel.mention} has been locked")
+        await ctx.send(f"{channel.mention} has been locked")
 
     @commands.hybrid_command()
     @commands.guild_only()

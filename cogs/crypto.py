@@ -414,6 +414,7 @@ class Crypto(commands.Cog):
 
     @app_commands.command(name="crypto", description="Show the current price of a cryptocurrency")
     @app_commands.describe(coin="Symbol or name (e.g. BTC, ETH, SOL)")
+    @app_commands.checks.cooldown(1, 10, key=lambda i: i.user.id)
     async def crypto_slash(self, interaction: discord.Interaction, coin: str):
         await interaction.response.defer()
         cid = _resolve(coin)
@@ -435,6 +436,7 @@ class Crypto(commands.Cog):
 
     @commands.group(name="crypto", aliases=["coin", "price"], invoke_without_command=True)
     @commands.guild_only()
+    @commands.cooldown(1, 10, commands.BucketType.user)
     async def crypto(self, ctx, *, coin: Optional[str] = None):
         """Crypto utilities. Without a subcommand, show price for <coin>."""
         if coin:
@@ -454,7 +456,7 @@ class Crypto(commands.Cog):
             return await ctx.send(embed=embed)
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
         await ctx.send(
-            f"💰 **Crypto**\n"
+            f"**Crypto**\n"
             f"`{prefix}crypto <coin>` · single-coin price\n"
             f"`{prefix}crypto panel <#channel> <coin1,coin2,…>` · self-updating multi-coin embed\n"
             f"`{prefix}crypto removepanel <#channel>` · remove a panel\n"
@@ -516,7 +518,7 @@ class Crypto(commands.Cog):
         ]
         try:
             await ctx.author.send("\n".join(lines))
-            await ctx.send("📬 Sent to your DMs.")
+            await ctx.send("Sent to your DMs.")
         except discord.Forbidden:
             await ctx.send("\n".join(lines))
 

@@ -108,7 +108,7 @@ class SystemMessages(commands.Cog):
         """Welcome / goodbye / boost messages."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
         await ctx.send(
-            f"💬 **System messages** — events: `welcome`, `goodbye`, `boost`\n"
+            f"**System messages** — events: `welcome`, `goodbye`, `boost`\n"
             f"`{prefix}systemmessage add <event> <#channel> [self_destruct=N] | <script>`\n"
             f"`{prefix}systemmessage remove <event> <#channel>`\n"
             f"`{prefix}systemmessage list`\n"
@@ -189,6 +189,7 @@ class SystemMessages(commands.Cog):
         await ctx.send(embed=embed)
 
     @sysmsg.command(name="test")
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def test(self, ctx, event: str):
         """Preview a system message here using you as the target."""
         event = event.lower()

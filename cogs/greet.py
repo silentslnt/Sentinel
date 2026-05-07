@@ -191,6 +191,7 @@ class Greet(commands.Cog):
     @commands.command(name="greettest", aliases=["greet test"])
     @commands.guild_only()
     @commands.check(is_guild_admin)
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def greettest(self, ctx, channel: discord.TextChannel = None):
         """Preview the greet message for a channel (uses you as the test user)."""
         target = channel or ctx.channel

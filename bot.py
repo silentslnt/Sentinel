@@ -116,6 +116,17 @@ class Sentinel(commands.Bot):
         return {**defaults, **data}
 
     async def setup_hook(self) -> None:
+        async def _on_tree_error(interaction: discord.Interaction, error: Exception):
+            from discord import app_commands
+            if isinstance(error, app_commands.CommandOnCooldown):
+                return await interaction.response.send_message(
+                    f"On cooldown — try again in {error.retry_after:.1f}s.",
+                    ephemeral=True,
+                )
+            log.exception("Unhandled slash error", exc_info=error)
+
+        self.tree.on_error = _on_tree_error
+
         # Connect DB before loading cogs so cogs can register their own tables.
         await self.db.connect()
         await self.guild_config.load()

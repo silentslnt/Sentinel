@@ -14,6 +14,7 @@ class Utility(commands.Cog):
         self.bot = bot
     
     @commands.command(aliases=['user', 'whois'])
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def userinfo(self, ctx, member: discord.Member = None):
         """Get information about a user"""
         member = member or ctx.author
@@ -48,6 +49,7 @@ class Utility(commands.Cog):
         await ctx.send(embed=embed)
     
     @commands.command(aliases=['server', 'guild'])
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def serverinfo(self, ctx):
         """Get information about the server"""
         guild = ctx.guild
@@ -79,6 +81,7 @@ class Utility(commands.Cog):
         await ctx.send(embed=embed)
     
     @commands.command(aliases=['botinfo', 'info', 'stats'])
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def about(self, ctx):
         """Get information about the bot"""
         embed = discord.Embed(
@@ -128,12 +131,12 @@ class Utility(commands.Cog):
         await ctx.send(embed=embed)
     
     @commands.command()
+    @commands.cooldown(1, 3, commands.BucketType.user)
     async def ping(self, ctx):
         """Check the bot's latency"""
         embed = discord.Embed(
-            title="🏓 Pong!",
             description=f"Latency: **{round(self.bot.latency * 1000)}ms**",
-            color=discord.Color.green()
+            color=discord.Color.default()
         )
         await ctx.send(embed=embed)
     
@@ -159,9 +162,8 @@ class Utility(commands.Cog):
         )
         
         embed = discord.Embed(
-            title="📨 Invite Me!",
-            description=f"[Click here to invite me to your server!]({invite_url})",
-            color=discord.Color.blue()
+            description=f"[Click here to invite me to your server]({invite_url})",
+            color=discord.Color.default()
         )
         
         if self.bot.config.get('support_server'):
@@ -173,19 +175,20 @@ class Utility(commands.Cog):
         await ctx.send(embed=embed)
     
     @commands.command(aliases=['poll'])
+    @commands.cooldown(1, 30, commands.BucketType.user)
     @with_perms(manage_messages=True)
     async def createpoll(self, ctx, question, *options):
         """Create a poll (max 10 options)"""
         if len(options) > 10:
             return await ctx.send("❌ You can only have up to 10 options!")
-        
+
         if len(options) < 2:
             return await ctx.send("❌ You need at least 2 options!")
-        
+
         embed = discord.Embed(
-            title="📊 Poll",
+            title="Poll",
             description=question,
-            color=discord.Color.blue()
+            color=discord.Color.default()
         )
         
         reactions = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
@@ -203,12 +206,13 @@ class Utility(commands.Cog):
             await poll_msg.add_reaction(reactions[idx])
     
     @commands.command()
+    @commands.cooldown(1, 10, commands.BucketType.user)
     async def remind(self, ctx, time: int, *, reminder):
         """Set a reminder (time in seconds)"""
         if time < 1 or time > 86400:  # Max 24 hours
             return await ctx.send("❌ Time must be between 1 second and 24 hours!")
-        
-        await ctx.send(f"⏰ I'll remind you in {time} seconds!")
+
+        await ctx.send(f"Reminder set for {time} seconds.")
         
         await asyncio.sleep(time)
         

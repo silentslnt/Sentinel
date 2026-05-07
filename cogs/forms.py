@@ -145,7 +145,7 @@ class _FormFillView(discord.ui.View):
 
     def _preview(self) -> discord.Embed:
         e = discord.Embed(
-            title=f"⚙ {self.form_row['title']}",
+            title=self.form_row['title'],
             description=self.form_row["description"] or "Fill in the options below.",
             color=discord.Color(self.form_row["color"]) if self.form_row["color"] else discord.Color.blurple(),
         )
@@ -315,7 +315,7 @@ class Forms(commands.Cog):
         """Forms — guided ephemeral data-collection embeds."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
         await ctx.send(
-            f"📋 **Forms**\n"
+            f"**Forms**\n"
             f"`{prefix}form create <name> <title>` · create a new form\n"
             f"`{prefix}form description <name> <text>`\n"
             f"`{prefix}form color <name> <hex>`\n"
@@ -430,7 +430,7 @@ class Forms(commands.Cog):
         fields = await fetch_form_fields(self.bot, ctx.guild.id, name)
         ch = ctx.guild.get_channel(form["target_channel_id"]) if form["target_channel_id"] else None
         embed = discord.Embed(
-            title=f"📋 Form: {form['name']}",
+            title=f"Form: {form['name']}",
             description=form["description"] or "_(no description)_",
             color=discord.Color(form["color"]) if form["color"] else discord.Color.blurple(),
         )

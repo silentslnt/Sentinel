@@ -25,7 +25,7 @@ class Configure(commands.Cog):
         """Configure server-specific settings."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
         await ctx.send(
-            f"⚙️ **Server config**\n"
+            f"**Server config**\n"
             f"Prefix: `{prefix}`\n\n"
             f"Subcommands: `{prefix}configure prefix <new>`, `{prefix}configure resetprefix`",
         )

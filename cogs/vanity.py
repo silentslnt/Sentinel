@@ -248,7 +248,7 @@ class Vanity(commands.Cog):
         """Vanity / server-tag role automation."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
         await ctx.send(
-            f"🏷️ **Vanity / server-tag**\n"
+            f"**Vanity / server-tag**\n"
             f"`{prefix}vanity set <substring>` · monitor custom status for substring\n"
             f"`{prefix}vanity mode <status|tag|both>`\n"
             f"`{prefix}vanity channel <#channel>` · award message destination\n"
@@ -298,7 +298,7 @@ class Vanity(commands.Cog):
         roles = self._roles.get(ctx.guild.id, set())
         if not cfg:
             return await ctx.send("ℹ️ Vanity is not configured here yet.")
-        embed = discord.Embed(title="🏷️ Vanity Configuration", color=discord.Color.blurple())
+        embed = discord.Embed(title="Vanity Configuration", color=discord.Color.default())
         embed.add_field(name="Mode", value=f"`{cfg.get('mode', 'both')}`", inline=True)
         embed.add_field(name="Substring", value=f"`{cfg.get('substring') or '—'}`", inline=True)
         ch = ctx.guild.get_channel(cfg.get("award_channel_id") or 0)
@@ -413,6 +413,7 @@ class Vanity(commands.Cog):
         await msg.edit(content="\n".join(lines))
 
     @vanity.command(name="test")
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def vanity_test(self, ctx):
         """Preview the vanity award message here using you as the target."""
         cfg = self._cfg.get(ctx.guild.id)
