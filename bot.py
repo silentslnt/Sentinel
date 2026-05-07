@@ -68,6 +68,8 @@ INITIAL_COGS = (
     "cogs.counters",
     "cogs.autoresponder",
     "cogs.crypto",
+    "cogs.stocks",
+    "cogs.roblox",
     "cogs.help",
 )
 

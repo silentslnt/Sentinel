@@ -25,9 +25,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from utils.checks import with_perms
+from utils.checks import is_guild_admin, with_perms
 
 log = logging.getLogger("sentinel.crypto")
+
+DEFAULT_COINS = ["bitcoin", "ethereum", "solana", "binancecoin", "ripple"]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS crypto_panels (
@@ -36,6 +38,11 @@ CREATE TABLE IF NOT EXISTS crypto_panels (
     message_id BIGINT NOT NULL,
     coins      TEXT NOT NULL,
     PRIMARY KEY (guild_id, channel_id)
+);
+
+CREATE TABLE IF NOT EXISTS crypto_defaults (
+    guild_id BIGINT PRIMARY KEY,
+    coins    TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS crypto_alerts (
@@ -464,18 +471,26 @@ class Crypto(commands.Cog):
             f"\nClick **🔔 Make Alert** on any panel to set a price alert.",
         )
 
+    async def _get_default_coins(self, guild_id: int) -> list[str]:
+        row = await self.bot.db.fetchrow(
+            "SELECT coins FROM crypto_defaults WHERE guild_id=$1", guild_id
+        )
+        return row["coins"].split(",") if row else DEFAULT_COINS
+
     @crypto.command(name="panel")
     @with_perms(manage_messages=True)
-    async def panel(self, ctx, channel: discord.TextChannel, *, coins: str):
-        """Post a self-updating multi-coin embed in <channel>. Coins comma-separated."""
-        coin_ids = [_resolve(c) for c in coins.replace(" ", ",").split(",") if c.strip()]
+    async def panel(self, ctx, channel: discord.TextChannel, *, coins: str = None):
+        """Post a self-updating multi-coin panel. Omit coins to use the guild default list."""
+        if coins:
+            coin_ids = [_resolve(c) for c in coins.replace(" ", ",").split(",") if c.strip()]
+        else:
+            coin_ids = await self._get_default_coins(ctx.guild.id)
         if not coin_ids:
             return await ctx.send("❌ Provide at least one coin.")
         snap = await self.get_snapshot(coin_ids)
         unknown = [c for c in coin_ids if c not in snap]
         if unknown:
             return await ctx.send(f"❌ Unknown coin(s): {', '.join(unknown)}")
-
         embed = self._build_panel_embed(coin_ids, snap)
         try:
             msg = await channel.send(embed=embed, view=self._panel_view())
@@ -489,6 +504,22 @@ class Crypto(commands.Cog):
             ctx.guild.id, channel.id, msg.id, ",".join(coin_ids),
         )
         await ctx.send(f"✅ Panel posted in {channel.mention} (refreshes every {PANEL_REFRESH_MINUTES}m).")
+
+    @crypto.command(name="setdefault")
+    @commands.check(is_guild_admin)
+    async def setdefault(self, ctx, *, coins: str):
+        """Set the default coin list for panels in this server."""
+        coin_ids = [_resolve(c) for c in coins.replace(" ", ",").split(",") if c.strip()]
+        if not coin_ids:
+            return await ctx.send("❌ Provide at least one coin.")
+        if len(coin_ids) > 15:
+            return await ctx.send("❌ Maximum 15 coins in the default list.")
+        await self.bot.db.execute(
+            """INSERT INTO crypto_defaults (guild_id, coins) VALUES ($1,$2)
+               ON CONFLICT (guild_id) DO UPDATE SET coins=EXCLUDED.coins""",
+            ctx.guild.id, ",".join(coin_ids),
+        )
+        await ctx.send(f"✅ Default coins updated: `{', '.join(coin_ids)}`")
 
     @crypto.command(name="removepanel")
     @with_perms(manage_messages=True)
