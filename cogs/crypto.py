@@ -1,22 +1,20 @@
 """Crypto prices + alerts.
 
-Pulls live data from CoinGecko's public API (no key required, rate-limited
-~10–50 calls/min on the free tier — we batch a single call every 60s for the
-whole bot, then satisfy panel renders + alert checks from the cached snapshot).
+Pulls live data from CoinGecko's API. A free Demo API key is required —
+sign up at coingecko.com/en/developers/dashboard and set COINGECKO_API_KEY in .env.
 
 Features:
   - `/crypto <coin>` — slash command, single-coin price card
-  - `.crypto panel <#channel> <coin1,coin2,…>` — posts a self-updating multi-coin
-    embed in the channel; refreshes every 5 minutes. Has Make Alert / View Alerts
-    buttons.
+  - `.crypto panel <#channel> [coin1,coin2,…]` — self-updating multi-coin panel.
+    Has Make Alert / View Alerts buttons.
   - Make Alert opens a modal: coin, direction, threshold. Alerts fire as DMs.
-  - View Alerts shows the user's active alerts and lets them remove individual
-    ones.
+  - View Alerts shows the user's active alerts and lets them remove individual ones.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import Optional
 
@@ -26,6 +24,9 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from utils.checks import is_guild_admin, with_perms
+
+COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "")
+COINGECKO_BASE = "https://api.coingecko.com/api/v3"
 
 log = logging.getLogger("sentinel.crypto")
 
@@ -242,7 +243,15 @@ class Crypto(commands.Cog):
 
     async def cog_load(self):
         await self.bot.db.execute(SCHEMA)
-        self._http = aiohttp.ClientSession(headers={"User-Agent": "Sentinel-Bot"})
+        headers = {"User-Agent": "Sentinel-Bot"}
+        if COINGECKO_API_KEY:
+            headers["x-cg-demo-api-key"] = COINGECKO_API_KEY
+        else:
+            log.warning(
+                "COINGECKO_API_KEY not set — CoinGecko free tier has very strict rate limits. "
+                "Get a free Demo key at coingecko.com/en/developers/dashboard"
+            )
+        self._http = aiohttp.ClientSession(headers=headers)
         self.bot.add_dynamic_items(MakeAlertButton, ViewAlertsButton)
         self.refresh_panels.start()
         self.check_alerts.start()
@@ -273,7 +282,7 @@ class Crypto(commands.Cog):
             }
             try:
                 async with self._http.get(
-                    "https://api.coingecko.com/api/v3/coins/markets",
+                    f"{COINGECKO_BASE}/coins/markets",
                     params=params,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as r:
