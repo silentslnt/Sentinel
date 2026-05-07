@@ -346,20 +346,60 @@ class Vanity(commands.Cog):
         """Force re-evaluation of every member in this server."""
         if not self._enabled_for(ctx.guild.id):
             return await ctx.send(
-                "❌ Vanity is not fully configured (need substring/tag mode + at least one reward role)."
+                "❌ Vanity is not fully configured (need at least one reward role)."
             )
+
+        configured_role_ids = self._roles.get(ctx.guild.id, set())
+        guild_roles = [ctx.guild.get_role(rid) for rid in configured_role_ids]
+        guild_roles = [r for r in guild_roles if r is not None and r < ctx.guild.me.top_role]
+        if not guild_roles:
+            return await ctx.send("❌ No valid reward roles (check I have a higher role than them).")
+
         msg = await ctx.send("⏳ Resync started…")
-        count = 0
+
+        added: dict[int, int] = {r.id: 0 for r in guild_roles}   # role_id -> count added
+        removed: dict[int, int] = {r.id: 0 for r in guild_roles}
+        matched = 0
+
         for member in ctx.guild.members:
             if member.bot:
                 continue
-            try:
-                await self._evaluate(member)
-                count += 1
-            except Exception:
-                log.exception("resync failed for %s", member)
+            member_role_ids = {r.id for r in member.roles}
+            matches = self._matches(member)
+            if matches:
+                matched += 1
+                to_add = [r for r in guild_roles if r.id not in member_role_ids]
+                if to_add:
+                    try:
+                        await member.add_roles(*to_add, reason="Vanity resync")
+                        for r in to_add:
+                            added[r.id] += 1
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+            else:
+                to_remove = [r for r in guild_roles if r.id in member_role_ids]
+                if to_remove:
+                    try:
+                        await member.remove_roles(*to_remove, reason="Vanity resync")
+                        for r in to_remove:
+                            removed[r.id] += 1
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
             await asyncio.sleep(0)
-        await msg.edit(content=f"✅ Resync complete — evaluated {count} members.")
+
+        lines = [f"**{matched}** member(s) currently match vanity."]
+        for r in guild_roles:
+            a = added[r.id]
+            rm = removed[r.id]
+            parts = []
+            if a:
+                parts.append(f"+{a} added")
+            if rm:
+                parts.append(f"-{rm} removed")
+            change = f" ({', '.join(parts)})" if parts else " (no change)"
+            lines.append(f"{r.mention}{change}")
+
+        await msg.edit(content="\n".join(lines))
 
 
 async def setup(bot):
