@@ -100,7 +100,7 @@ class SnipeCog(commands.Cog):
 
     # ---- snipe ----
 
-    @commands.hybrid_command(name="snipe", aliases=["s", "s2", "s3", "s4", "s5"])
+    @commands.command(name="snipe", aliases=["s", "s2", "s3", "s4", "s5"])
     @commands.guild_only()
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def snipe(self, ctx, index: int = None):
@@ -128,7 +128,7 @@ class SnipeCog(commands.Cog):
 
     # ---- editsnipe ----
 
-    @commands.hybrid_command(name="editsnipe", aliases=["es", "es2", "es3", "es4", "es5"])
+    @commands.command(name="editsnipe", aliases=["es", "es2", "es3", "es4", "es5"])
     @commands.guild_only()
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def editsnipe(self, ctx, index: int = None):

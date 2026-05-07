@@ -66,7 +66,7 @@ class Moderation(commands.Cog):
             return "My highest role must be above the target's highest role."
         return None
 
-    @commands.hybrid_command()
+    @commands.command()
     @commands.guild_only()
     @with_perms(kick_members=True)
     @commands.bot_has_permissions(kick_members=True)
@@ -91,7 +91,7 @@ class Moderation(commands.Cog):
         embed.set_footer(text=f"Kicked by {ctx.author}")
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command()
+    @commands.command()
     @commands.guild_only()
     @with_perms(ban_members=True)
     @commands.bot_has_permissions(ban_members=True)
@@ -116,7 +116,7 @@ class Moderation(commands.Cog):
         embed.set_footer(text=f"Banned by {ctx.author}")
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command()
+    @commands.command()
     @commands.guild_only()
     @with_perms(ban_members=True)
     @commands.bot_has_permissions(ban_members=True)
@@ -149,7 +149,7 @@ class Moderation(commands.Cog):
             return await ctx.send(f"❌ Failed to unban: {e}")
         await ctx.send(f"✅ Unbanned **{target}** (`{target.id}`)")
 
-    @commands.hybrid_command(aliases=["m", "timeout"])
+    @commands.command(aliases=["m", "timeout"])
     @commands.guild_only()
     @with_perms(moderate_members=True)
     @commands.bot_has_permissions(moderate_members=True)
@@ -184,7 +184,7 @@ class Moderation(commands.Cog):
             embed.add_field(name="Reason", value=reason)
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(aliases=["um", "untimeout"])
+    @commands.command(aliases=["um", "untimeout"])
     @commands.guild_only()
     @with_perms(moderate_members=True)
     @commands.bot_has_permissions(moderate_members=True)
@@ -200,7 +200,7 @@ class Moderation(commands.Cog):
             return await ctx.send(f"❌ Failed to unmute: {e}")
         await ctx.send(f"🔊 {member.mention} has been unmuted")
 
-    @commands.hybrid_command(aliases=["clear", "c", "pg"])
+    @commands.command(aliases=["clear", "c", "pg"])
     @commands.guild_only()
     @with_perms(manage_messages=True)
     @commands.bot_has_permissions(manage_messages=True)
@@ -222,7 +222,7 @@ class Moderation(commands.Cog):
         except (discord.NotFound, discord.Forbidden):
             pass
 
-    @commands.hybrid_command(aliases=["sm"])
+    @commands.command(aliases=["sm"])
     @commands.guild_only()
     @with_perms(manage_channels=True)
     @commands.bot_has_permissions(manage_channels=True)
@@ -235,7 +235,7 @@ class Moderation(commands.Cog):
         await ctx.channel.edit(slowmode_delay=seconds)
         await ctx.send("✅ Slowmode disabled" if seconds == 0 else f"✅ Slowmode set to {seconds} seconds")
 
-    @commands.hybrid_command()
+    @commands.command()
     @commands.guild_only()
     @with_perms(manage_channels=True)
     @commands.bot_has_permissions(manage_channels=True)
@@ -249,7 +249,7 @@ class Moderation(commands.Cog):
         )
         await ctx.send(f"{channel.mention} has been locked")
 
-    @commands.hybrid_command()
+    @commands.command()
     @commands.guild_only()
     @with_perms(manage_channels=True)
     @commands.bot_has_permissions(manage_channels=True)
@@ -263,7 +263,7 @@ class Moderation(commands.Cog):
         )
         await ctx.send(f"🔓 {channel.mention} has been unlocked")
 
-    @commands.hybrid_command()
+    @commands.command()
     @commands.guild_only()
     @commands.check(is_whitelisted)
     @commands.bot_has_permissions(manage_channels=True)
@@ -306,7 +306,7 @@ class Moderation(commands.Cog):
         )
         await new_channel.send(embed=embed)
 
-    @commands.hybrid_command(aliases=["w"])
+    @commands.command(aliases=["w"])
     @commands.guild_only()
     @with_perms(manage_roles=True)
     async def warn(self, ctx, member: discord.Member, *, reason: str = "No reason provided"):

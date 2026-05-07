@@ -47,7 +47,7 @@ class AFK(commands.Cog):
             for r in rows
         }
 
-    @commands.hybrid_command(name="afk")
+    @commands.command(name="afk")
     @commands.guild_only()
     async def afk(self, ctx, *, reason: Optional[str] = None):
         """Set yourself as AFK. Pings to you will get an AFK notice."""
