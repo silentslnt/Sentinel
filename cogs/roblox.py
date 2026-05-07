@@ -16,7 +16,7 @@ import aiohttp
 import discord
 from discord.ext import commands, tasks
 
-from utils.checks import with_perms
+from utils.checks import is_guild_admin, with_perms
 
 log = logging.getLogger("sentinel.roblox")
 
@@ -149,6 +149,7 @@ class RobloxCog(commands.Cog):
 
     @commands.group(name="roblox", aliases=["rbx"], invoke_without_command=True)
     @commands.guild_only()
+    @commands.check(is_guild_admin)
     async def roblox(self, ctx):
         """Roblox trending games panel."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
