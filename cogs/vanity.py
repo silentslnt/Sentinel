@@ -226,7 +226,7 @@ class Vanity(commands.Cog):
                     await self._evaluate(member)
                 except Exception:
                     log.exception("periodic_sweep failed for %s", member)
-                await asyncio.sleep(0)
+                await asyncio.sleep(0.5)
 
     @periodic_sweep.before_loop
     async def _before_sweep(self):
