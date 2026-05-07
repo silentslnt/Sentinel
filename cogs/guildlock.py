@@ -118,10 +118,15 @@ class GuildLock(commands.Cog):
     @commands.is_owner()
     async def wl_list(self, ctx):
         """Show the current whitelist."""
-        lines = [f"🏠 Home: `{HOME_GUILD_ID}`"]
+        def _guild_label(gid: int) -> str:
+            g = self.bot.get_guild(gid)
+            return f"**{g.name}** (`{gid}`)" if g else f"`{gid}`"
+
+        lines = [f"Home: {_guild_label(HOME_GUILD_ID)}"]
         extras = sorted(self._allowed - {HOME_GUILD_ID})
         if extras:
-            lines.append("Whitelisted: " + ", ".join(f"`{g}`" for g in extras))
+            lines.append("Whitelisted:")
+            lines.extend(f"• {_guild_label(gid)}" for gid in extras)
         else:
             lines.append("_No additional whitelisted guilds._")
         await ctx.send("\n".join(lines))
