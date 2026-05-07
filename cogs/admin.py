@@ -16,9 +16,11 @@ CREATE TABLE IF NOT EXISTS admin_whitelist (
 def _owner_only(ctx) -> bool:
     if not ctx.guild:
         raise commands.CheckFailure("This command can only be used in a server.")
-    if ctx.author.id != ctx.guild.owner_id:
-        raise commands.CheckFailure("Only the server owner can manage the admin whitelist.")
-    return True
+    if ctx.author.id == ctx.guild.owner_id:
+        return True
+    if ctx.bot.owner_id and ctx.author.id == ctx.bot.owner_id:
+        return True
+    raise commands.CheckFailure("Only the server owner can manage the admin whitelist.")
 
 
 class Admin(commands.Cog):
