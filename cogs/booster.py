@@ -130,16 +130,39 @@ class Booster(commands.Cog):
         role = ctx.guild.get_role(rid)
         if role is None or role >= ctx.guild.me.top_role:
             return await ctx.send("❌ Role missing or above my top role.")
-        msg = await ctx.send("⏳ Syncing…")
-        granted = 0
+
+        vanity_cog = self.bot.cogs.get("Vanity")
+        msg = await ctx.send("⏳ Syncing boosters…")
+
+        granted = revoked = skipped = 0
         for member in ctx.guild.members:
-            if member.premium_since and role not in member.roles:
-                try:
-                    await member.add_roles(role, reason="Booster sync")
-                    granted += 1
-                except (discord.Forbidden, discord.HTTPException):
-                    continue
-        await msg.edit(content=f"✅ Synced — granted role to {granted} booster(s).")
+            if member.bot:
+                continue
+            try:
+                if member.premium_since:
+                    if role not in member.roles:
+                        await member.add_roles(role, reason="Booster sync")
+                        granted += 1
+                else:
+                    if role in member.roles:
+                        if vanity_cog and vanity_cog._matches(member):
+                            skipped += 1
+                            continue
+                        await member.remove_roles(role, reason="Booster sync (revoke)")
+                        revoked += 1
+            except (discord.Forbidden, discord.HTTPException):
+                continue
+
+        parts = []
+        if granted:
+            parts.append(f"+{granted} granted")
+        if revoked:
+            parts.append(f"-{revoked} revoked")
+        if skipped:
+            parts.append(f"{skipped} skipped (vanity)")
+        summary = ", ".join(parts) if parts else "no changes"
+        boosters = sum(1 for m in ctx.guild.members if not m.bot and m.premium_since)
+        await msg.edit(content=f"**{boosters}** active booster(s) — {summary}.")
 
 
 async def setup(bot):
