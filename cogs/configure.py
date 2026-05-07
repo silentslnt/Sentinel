@@ -31,6 +31,7 @@ class Configure(commands.Cog):
         )
 
     @configure.command(name="prefix")
+    @commands.check(is_guild_admin)
     async def configure_prefix(self, ctx, new_prefix: str):
         """Change this server's command prefix (max 5 chars)."""
         await self._set_prefix(ctx, new_prefix)
@@ -57,6 +58,7 @@ class Configure(commands.Cog):
         await ctx.send(f"Prefix updated to `{new_prefix}`")
 
     @configure.command(name="resetprefix")
+    @commands.check(is_guild_admin)
     async def configure_resetprefix(self, ctx):
         """Reset the prefix to the bot default."""
         await self.bot.guild_config.reset_prefix(ctx.guild.id)

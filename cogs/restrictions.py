@@ -30,11 +30,19 @@ VALID_PERMISSIONS = {
     "mention_everyone", "manage_nicknames", "manage_threads",
 }
 
-# Commands that can never be disabled or restricted.
-PROTECTED = {
-    "restrict", "fp", "fakepermission", "disable", "enable", "disabled",
-    "admin", "reload", "sync", "shutdown",
+# Top-level command names that can never be disabled or restricted.
+# Hierarchy-checked: "fakepermission" also covers "fakepermission add", etc.
+PROTECTED_ROOTS = {
+    "restrict", "fakepermission", "disable", "enable", "disabled",
+    "admin", "restrictions", "reload", "sync", "shutdown",
+    "prefix", "configure",
 }
+
+
+def _is_protected(qualified_name: str) -> bool:
+    """Return True if this command or any of its parent groups are protected."""
+    parts = qualified_name.split()
+    return any(" ".join(parts[: i + 1]) in PROTECTED_ROOTS for i in range(len(parts)))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS disabled_commands (
@@ -108,19 +116,29 @@ class Restrictions(commands.Cog):
         if self.bot.owner_id and ctx.author.id == self.bot.owner_id:
             return True
 
-        cmd = ctx.command.qualified_name
+        # ctx.command.qualified_name always uses canonical names, so aliases are
+        # automatically covered — you can't bypass a disabled "purge" by typing "clear".
+        # Build the full hierarchy so that disabling/restricting a group command (e.g.
+        # "role") also covers all its subcommands ("role add", "role remove", etc.).
+        qualified = ctx.command.qualified_name
+        parts = qualified.split()
+        hierarchy = [" ".join(parts[: i + 1]) for i in range(len(parts))]
 
-        # Disabled check
-        if cmd in self._disabled.get(ctx.guild.id, set()):
+        # --- Disabled check (any level in hierarchy) ---
+        guild_disabled = self._disabled.get(ctx.guild.id, set())
+        if any(c in guild_disabled for c in hierarchy):
             raise commands.CheckFailure("That command is disabled in this server.")
 
-        # Role restriction check
-        role_id = self._restrictions.get(ctx.guild.id, {}).get(cmd)
-        if role_id is not None:
-            role = ctx.guild.get_role(role_id)
+        # --- Restriction check (most-specific level wins) ---
+        restrictions = self._restrictions.get(ctx.guild.id, {})
+        for c in reversed(hierarchy):
+            if c not in restrictions:
+                continue
+            role = ctx.guild.get_role(restrictions[c])
             if role is None or role not in ctx.author.roles:
                 label = role.mention if role else "a deleted role"
                 raise commands.CheckFailure(f"This command is restricted to {label}.")
+            break  # user has the required role — allow
 
         return True
 
@@ -136,7 +154,7 @@ class Restrictions(commands.Cog):
         cmd = self.bot.get_command(command)
         if cmd is None:
             return await ctx.send(f"❌ Unknown command `{command}`.")
-        if cmd.qualified_name in PROTECTED:
+        if _is_protected(cmd.qualified_name):
             return await ctx.send("❌ That command cannot be restricted.")
 
         if role is None:
@@ -243,7 +261,7 @@ class Restrictions(commands.Cog):
         cmd = self.bot.get_command(command)
         if cmd is None:
             return await ctx.send(f"❌ Unknown command `{command}`.")
-        if cmd.qualified_name in PROTECTED:
+        if _is_protected(cmd.qualified_name):
             return await ctx.send("❌ That command cannot be disabled.")
         await self.bot.db.execute(
             "INSERT INTO disabled_commands (guild_id, command) VALUES ($1,$2) ON CONFLICT DO NOTHING",

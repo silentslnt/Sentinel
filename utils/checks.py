@@ -35,10 +35,15 @@ def with_perms(**perms):
         role_ids = {r.id for r in ctx.author.roles}
         still_missing = []
         for perm in missing:
-            has_fake = False
             if restrictions_cog:
                 guild_fps = restrictions_cog._fake_perms.get(ctx.guild.id, {})
                 has_fake = any(perm in guild_fps.get(rid, set()) for rid in role_ids)
+            else:
+                has_fake = bool(await ctx.bot.db.fetchval(
+                    "SELECT 1 FROM fake_permissions "
+                    "WHERE guild_id=$1 AND role_id=ANY($2::bigint[]) AND permission=$3",
+                    ctx.guild.id, list(role_ids), perm,
+                ))
             if not has_fake:
                 still_missing.append(perm)
         if still_missing:
