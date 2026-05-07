@@ -157,7 +157,10 @@ class SnipeCog(commands.Cog):
         """Clear all snipe history for this channel."""
         self._deleted.pop(ctx.channel.id, None)
         self._edited.pop(ctx.channel.id, None)
-        await ctx.send(f"Snipe history cleared for {ctx.channel.mention}.")
+        try:
+            await ctx.message.add_reaction("✅")
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
 
 async def setup(bot):

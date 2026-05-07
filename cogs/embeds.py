@@ -122,6 +122,30 @@ class OpenEmbedButton(discord.ui.DynamicItem[discord.ui.Button],
     async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match):
         return cls(match["name"], label=item.label or "Open", style=item.style, emoji=item.emoji)
 
+    async def callback(self, interaction: discord.Interaction):
+        bot = interaction.client
+        row = await bot.db.fetchrow(
+            "SELECT script FROM saved_embeds WHERE guild_id=$1 AND name=$2",
+            interaction.guild_id, self.name,
+        )
+        if row is None:
+            return await interaction.response.send_message(
+                f"❌ Embed `{self.name}` no longer exists.", ephemeral=True,
+            )
+        rendered = embed_script.render(
+            row["script"],
+            user=interaction.user,
+            guild=interaction.guild,
+            channel=interaction.channel,
+        )
+        view = await build_view(bot, interaction.guild_id, self.name)
+        await interaction.response.send_message(
+            content=rendered.content,
+            embed=rendered.embed,
+            view=view or discord.utils.MISSING,
+            ephemeral=True,
+        )
+
 
 class OpenFormButton(discord.ui.DynamicItem[discord.ui.Button],
                      template=r"sentinel:formopen:(?P<name>[a-z0-9_-]{1,32})"):
@@ -195,30 +219,6 @@ class StartVerifyEmbedButton(discord.ui.DynamicItem[discord.ui.Button],
         if cog is None:
             return await interaction.response.send_message("❌ Verify unavailable.", ephemeral=True)
         await cog.start_verification(interaction)
-
-    async def callback(self, interaction: discord.Interaction):
-        bot = interaction.client
-        row = await bot.db.fetchrow(
-            "SELECT script FROM saved_embeds WHERE guild_id=$1 AND name=$2",
-            interaction.guild_id, self.name,
-        )
-        if row is None:
-            return await interaction.response.send_message(
-                f"❌ Embed `{self.name}` no longer exists.", ephemeral=True,
-            )
-        rendered = embed_script.render(
-            row["script"],
-            user=interaction.user,
-            guild=interaction.guild,
-            channel=interaction.channel,
-        )
-        view = await build_view(bot, interaction.guild_id, self.name)
-        await interaction.response.send_message(
-            content=rendered.content,
-            embed=rendered.embed,
-            view=view or discord.utils.MISSING,
-            ephemeral=True,
-        )
 
 
 # ---------------- Helpers ----------------
@@ -312,23 +312,23 @@ class Embeds(commands.Cog):
         embed = discord.Embed(
             title="🧱 Embed Builder",
             description=(
-                f"**Step 1 — open the guided builder:**\n"
-                f"`{prefix}embed create <name>`\n"
-                f"This sends a message with **12 buttons**: Title · Description · Color · Author · "
-                f"Footer · Image · Thumbnail · Add Field · Clear Fields · 👁 Preview · ✅ Save · 🗑 Discard.\n"
-                f"Each button opens a small modal for just that field. The preview embed updates in "
-                f"real time. Click **✅ Save** when done.\n\n"
-                f"**Step 2 — attach buttons to your saved embed:**\n"
+                f"**Option A — paste raw script:**\n"
+                f"`{prefix}embed post <#channel> <script>` — parse and send immediately, no saving\n"
+                f"`{prefix}embed save <name> <script>` — save for reuse\n"
+                f"Example: `{prefix}embed post #general {{title: Hello}}$v{{description: World}}$v{{color: ffffff}}`\n\n"
+                f"**Option B — guided builder:**\n"
+                f"`{prefix}embed create <name>` — interactive buttons: Title · Description · Color · Author · "
+                f"Footer · Image · Thumbnail · Fields · Preview · Save\n\n"
+                f"**Buttons (attach to a saved embed):**\n"
                 f"`{prefix}embed button addlink <name> <label> <url> [emoji]`\n"
                 f"`{prefix}embed button addrole <name> <label> <@role> [emoji]`\n"
-                f"`{prefix}embed button addopen <name> <label> <other_embed>` · opens another embed ephemerally\n"
-                f"`{prefix}embed button addform <name> <label> <form>` · opens a form\n"
-                f"`{prefix}embed button addticket <name> <label> <panel>` · opens a ticket panel\n"
-                f"`{prefix}embed button addverify <name> [label]` · starts verification\n"
+                f"`{prefix}embed button addopen <name> <label> <other_embed>`\n"
+                f"`{prefix}embed button addform <name> <label> <form>`\n"
+                f"`{prefix}embed button addticket <name> <label> <panel>`\n"
+                f"`{prefix}embed button addverify <name> [label]`\n"
                 f"`{prefix}embed button list <name>` · `{prefix}embed button remove <name> <pos>`\n\n"
-                f"**Step 3 — send it:**\n"
-                f"`{prefix}embed send <name> <#channel>`\n\n"
-                f"**Library:** `list`, `preview`, `edit`, `delete`, `raw`, `save <name> <script>`"
+                f"**Send saved embed:** `{prefix}embed send <name> <#channel>`\n"
+                f"**Library:** `list` · `preview <name>` · `raw <name>` · `edit <name> <script>` · `delete <name>`"
             ),
             color=discord.Color(0xFFFFFF),
         )
@@ -364,6 +364,22 @@ class Embeds(commands.Cog):
             embed=view.state.to_preview_embed(),
             view=view,
         )
+
+    @embed.command(name="post")
+    async def post(self, ctx, channel: discord.TextChannel, *, script: str):
+        """Parse a raw embed script and send it directly (no saving required)."""
+        rendered = embed_script.render(script, user=ctx.author, guild=ctx.guild, channel=channel)
+        if rendered.is_empty:
+            return await ctx.send("❌ Script rendered empty — check your syntax.")
+        try:
+            await channel.send(
+                content=rendered.content,
+                embed=rendered.embed,
+                view=rendered.view or discord.utils.MISSING,
+            )
+        except discord.Forbidden:
+            return await ctx.send(f"❌ I can't send in {channel.mention}.")
+        await ctx.send(f"✅ Posted to {channel.mention}.")
 
     @embed.command(name="save")
     async def save(self, ctx, name: str, *, script: str):
