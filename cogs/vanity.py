@@ -48,8 +48,8 @@ VALID_MODES = ("status", "tag", "both")
 
 def _custom_status_text(member: discord.Member) -> str:
     for activity in member.activities:
-        if isinstance(activity, discord.CustomActivity) and activity.name:
-            return activity.name
+        if isinstance(activity, discord.CustomActivity):
+            return activity.state or ""
     return ""
 
 
