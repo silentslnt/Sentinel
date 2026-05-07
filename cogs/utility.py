@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from datetime import datetime, timezone
 import asyncio
 import platform
 import psutil
@@ -220,18 +219,5 @@ class Utility(commands.Cog):
         
         await ctx.send(f"{ctx.author.mention}", embed=embed)
     
-    @commands.command()
-    async def embed(self, ctx, title, *, description):
-        """Create a custom embed"""
-        embed = discord.Embed(
-            title=title,
-            description=description,
-            color=discord.Color.blue(),
-            timestamp=datetime.now(timezone.utc),
-        )
-        embed.set_footer(text=f"Created by {ctx.author}", icon_url=ctx.author.display_avatar.url)
-        
-        await ctx.send(embed=embed)
-
 async def setup(bot):
     await bot.add_cog(Utility(bot))

@@ -56,9 +56,12 @@ class Help(commands.Cog):
 
         for cog_name in sorted(per_cog):
             cog = self.bot.get_cog(cog_name)
-            label = cog.description or cog_name if cog else cog_name
-            # Strip emoji prefix from cog description if present
-            label = label.split(" ", 1)[-1] if label and label[0] not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ" else label
+            # Use __cog_description__ directly — avoids shadowing by subcommands named "description"
+            raw = getattr(type(cog), '__cog_description__', '') if cog else ''
+            label = (raw.strip() or cog_name)
+            # Strip leading emoji
+            if label and label[0] not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ":
+                label = label.split(" ", 1)[-1] if " " in label else cog_name
 
             lines = []
             for cmd in per_cog[cog_name]:
