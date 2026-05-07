@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS roblox_panels (
 
 PANEL_REFRESH_MINUTES = 5
 CACHE_TTL = 60
-GAMES_URL = "https://games.roblox.com/v1/games/list"
+SORTS_URL = "https://apis.roblox.com/explore-api/v1/get-sorts"
+GAMES_URL = "https://apis.roblox.com/explore-api/v1/get-games"
 
 
 def _fmt_players(n: int) -> str:
@@ -70,29 +71,45 @@ class RobloxCog(commands.Cog):
         now = time.monotonic()
         if now - self._cache_ts < CACHE_TTL and self._cache:
             return self._cache
+        headers = {"User-Agent": "Mozilla/5.0"}
+        timeout = aiohttp.ClientTimeout(total=10)
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                # Step 1: get sort tokens
+                async with session.get(SORTS_URL, timeout=timeout) as resp:
+                    if resp.status != 200:
+                        log.warning("Roblox sorts API returned %s", resp.status)
+                        return self._cache
+                    sorts_data = await resp.json(content_type=None)
+
+                # Find the "Popular" sort token (fall back to first sort available)
+                sorts = sorts_data.get("sorts", [])
+                token = None
+                for s in sorts:
+                    name = (s.get("name") or s.get("displayName") or "").lower()
+                    if "popular" in name:
+                        token = s.get("token")
+                        break
+                if not token and sorts:
+                    token = sorts[0].get("token")
+                if not token:
+                    log.warning("Roblox: no sort token found. Keys: %s", list(sorts_data.keys()))
+                    return self._cache
+
+                # Step 2: fetch games for that sort
                 async with session.get(
                     GAMES_URL,
-                    params={
-                        "model.sortType": 2,
-                        "model.startRows": 0,
-                        "model.maxRows": 10,
-                    },
-                    headers={"User-Agent": "Mozilla/5.0"},
-                    timeout=aiohttp.ClientTimeout(total=10),
+                    params={"sortToken": token, "startRows": 0, "maxRows": 10},
+                    timeout=timeout,
                 ) as resp:
-                    log.info("Roblox API status: %s", resp.status)
-                    text = await resp.text()
-                    log.info("Roblox API response: %.300s", text)
                     if resp.status != 200:
-                        log.warning("Roblox API returned %s", resp.status)
+                        log.warning("Roblox games API returned %s", resp.status)
                         return self._cache
-                    import json as _json
-                    data = _json.loads(text)
-            games = data.get("games", [])
+                    games_data = await resp.json(content_type=None)
+
+            games = games_data.get("games", [])
             if not games:
-                log.warning("Roblox API returned 0 games. Keys: %s", list(data.keys()))
+                log.warning("Roblox games API returned 0 games. Keys: %s", list(games_data.keys()))
             self._cache = games
             self._cache_ts = now
             return games
