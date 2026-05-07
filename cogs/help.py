@@ -14,12 +14,6 @@ def _walk_app_commands(tree: app_commands.CommandTree) -> Iterable[app_commands.
             yield cmd
 
 
-def _short(text: str | None, limit: int = 60) -> str:
-    if not text:
-        return "No description."
-    first_line = text.strip().splitlines()[0]
-    return first_line if len(first_line) <= limit else first_line[:limit - 1] + "…"
-
 
 class Help(commands.Cog):
     """Help command"""
@@ -56,24 +50,13 @@ class Help(commands.Cog):
 
         for cog_name in sorted(per_cog):
             cog = self.bot.get_cog(cog_name)
-            # Use __cog_description__ directly — avoids shadowing by subcommands named "description"
             raw = getattr(type(cog), '__cog_description__', '') if cog else ''
-            label = (raw.strip() or cog_name)
-            # Strip leading emoji
+            label = raw.strip() or cog_name
             if label and label[0] not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ":
                 label = label.split(" ", 1)[-1] if " " in label else cog_name
 
-            lines = []
-            for cmd in per_cog[cog_name]:
-                lines.append(f"`{prefix}{cmd.name}` — {_short(cmd.help or cmd.brief)}")
-                # Show subcommands for groups
-                if isinstance(cmd, commands.Group):
-                    for sub in sorted(cmd.commands, key=lambda c: c.name):
-                        if not sub.hidden:
-                            lines.append(f"  `{prefix}{cmd.name} {sub.name}` — {_short(sub.help or sub.brief)}")
-
-            if lines:
-                embed.add_field(name=label, value="\n".join(lines), inline=False)
+            names = " ".join(f"`{cmd.name}`" for cmd in per_cog[cog_name])
+            embed.add_field(name=label, value=names, inline=False)
 
         total = sum(len(v) for v in per_cog.values())
         embed.set_footer(text=f"{total} commands · {prefix}help <command> for usage")
@@ -99,7 +82,7 @@ class Help(commands.Cog):
                 if subs:
                     embed.add_field(
                         name="Subcommands",
-                        value="\n".join(f"`{prefix}{cmd.name} {s.name}` — {_short(s.help or s.brief)}" for s in subs),
+                        value="\n".join(f"`{prefix}{cmd.name} {s.name}` — {(s.help or s.brief or 'No description.').splitlines()[0][:60]}" for s in subs),
                         inline=False,
                     )
             await ctx.send(embed=embed)
