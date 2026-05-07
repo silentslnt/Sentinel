@@ -59,9 +59,9 @@ def _has_guild_tag(member: discord.Member, guild_id: int) -> bool:
     primary = getattr(member, "primary_guild", None)
     if primary is None:
         return False
-    if not getattr(primary, "identity_enabled", False):
+    if not getattr(primary, "identity_enabled", True):
         return False
-    return getattr(primary, "identity_guild_id", None) == guild_id
+    return getattr(primary, "id", None) == guild_id
 
 
 class Vanity(commands.Cog):
