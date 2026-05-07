@@ -105,7 +105,7 @@ class Autoresponder(commands.Cog):
             f"💬 **Auto-responder**\n"
             f"`{prefix}autoresponder add <trigger> | <response>` (use `|` to separate)\n"
             f"`{prefix}autoresponder addexact <trigger> | <response>`\n"
-            f"`{prefix}autoresponder remove <id>`\n"
+            f"`{prefix}autoresponder remove <id or trigger>`\n"
             f"`{prefix}autoresponder list`",
         )
 
@@ -134,14 +134,19 @@ class Autoresponder(commands.Cog):
         await ctx.send(f"✅ Added auto-responder for `{trigger}` ({match_type}).")
 
     @autoresponder.command(name="remove")
-    async def remove(self, ctx, id: int):
-        """Remove an auto-responder by ID."""
-        result = await self.bot.db.execute(
-            "DELETE FROM autoresponders WHERE id=$1 AND guild_id=$2", id, ctx.guild.id,
-        )
+    async def remove(self, ctx, *, query: str):
+        """Remove an auto-responder by ID or trigger name."""
+        if query.isdigit():
+            result = await self.bot.db.execute(
+                "DELETE FROM autoresponders WHERE id=$1 AND guild_id=$2", int(query), ctx.guild.id,
+            )
+        else:
+            result = await self.bot.db.execute(
+                "DELETE FROM autoresponders WHERE guild_id=$1 AND trigger=$2", ctx.guild.id, query,
+            )
         n = int(result.split()[-1]) if result and result.startswith("DELETE") else 0
         if n == 0:
-            return await ctx.send("❌ No auto-responder with that ID.")
+            return await ctx.send("❌ No auto-responder found with that ID or trigger.")
         await self._refresh()
         await ctx.send("✅ Removed.")
 

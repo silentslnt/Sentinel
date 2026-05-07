@@ -188,6 +188,45 @@ class Greet(commands.Cog):
         )
         await ctx.send(embed=embed)
 
+    @commands.command(name="greettest", aliases=["greet test"])
+    @commands.guild_only()
+    @commands.check(is_guild_admin)
+    async def greettest(self, ctx, channel: discord.TextChannel = None):
+        """Preview the greet message for a channel (uses you as the test user)."""
+        target = channel or ctx.channel
+        row = await self.bot.db.fetchrow(
+            "SELECT message, delete_after FROM greet_channels WHERE guild_id=$1 AND channel_id=$2",
+            ctx.guild.id, target.id,
+        )
+        if row is None:
+            # Fall back to any configured greet in the guild
+            row = await self.bot.db.fetchrow(
+                "SELECT channel_id, message, delete_after FROM greet_channels WHERE guild_id=$1 LIMIT 1",
+                ctx.guild.id,
+            )
+            if row is None:
+                return await ctx.send("❌ No greet configured in this server.")
+            target = ctx.guild.get_channel(row["channel_id"]) or target
+
+        rendered = embed_script.render(
+            row["message"],
+            user=ctx.author,
+            guild=ctx.guild,
+            channel=target,
+            inviter=None,
+            invite_code=None,
+        )
+        if rendered.is_empty:
+            return await ctx.send("❌ The greet script rendered empty.")
+
+        await ctx.send("**Preview:**", delete_after=5)
+        await ctx.send(
+            content=rendered.content,
+            embed=rendered.embed,
+            view=rendered.view or discord.utils.MISSING,
+            allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+        )
+
     @commands.command(name="greetvariables", aliases=["greetvariable"])
     @commands.guild_only()
     async def greetvariables(self, ctx):

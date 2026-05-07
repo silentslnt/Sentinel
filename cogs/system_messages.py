@@ -112,7 +112,7 @@ class SystemMessages(commands.Cog):
             f"`{prefix}systemmessage add <event> <#channel> [self_destruct=N] | <script>`\n"
             f"`{prefix}systemmessage remove <event> <#channel>`\n"
             f"`{prefix}systemmessage list`\n"
-            f"`{prefix}systemmessage test <event>`",
+            f"`{prefix}systemmessage test <event>` — preview here",
         )
 
     @sysmsg.command(name="add")
@@ -190,12 +190,34 @@ class SystemMessages(commands.Cog):
 
     @sysmsg.command(name="test")
     async def test(self, ctx, event: str):
-        """Trigger a system message as if it just fired (uses you as target)."""
+        """Preview a system message here using you as the target."""
         event = event.lower()
         if event not in EVENTS:
             return await ctx.send(f"❌ Event must be one of: {', '.join(EVENTS)}")
-        await ctx.send(f"⏳ Firing **{event}**…")
-        await _dispatch(self.bot, event, ctx.author)
+
+        rows = await self.bot.db.fetch(
+            "SELECT script FROM system_messages WHERE guild_id=$1 AND event=$2",
+            ctx.guild.id, event,
+        )
+        if not rows:
+            return await ctx.send(f"❌ No **{event}** message configured.")
+
+        await ctx.send(f"**Preview — {event}:**", delete_after=5)
+        for row in rows:
+            rendered = embed_script.render(
+                row["script"],
+                user=ctx.author,
+                guild=ctx.guild,
+                channel=ctx.channel,
+            )
+            if rendered.is_empty:
+                continue
+            await ctx.send(
+                content=rendered.content,
+                embed=rendered.embed,
+                view=rendered.view or discord.utils.MISSING,
+                allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+            )
 
 
 async def setup(bot):

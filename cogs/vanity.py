@@ -19,6 +19,7 @@ import logging
 import discord
 from discord.ext import commands, tasks
 
+from utils import embed_script
 from utils.checks import is_guild_admin
 
 log = logging.getLogger("sentinel.vanity")
@@ -171,9 +172,16 @@ class Vanity(commands.Cog):
         channel = member.guild.get_channel(channel_id)
         if channel is None:
             return
-        text = message.replace("{user}", member.mention).replace("{user.name}", member.display_name)
+        rendered = embed_script.render(message, user=member, guild=member.guild, channel=channel)
+        if rendered.is_empty:
+            return
         try:
-            await channel.send(text)
+            await channel.send(
+                content=rendered.content,
+                embed=rendered.embed,
+                view=rendered.view or discord.utils.MISSING,
+                allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+            )
         except (discord.Forbidden, discord.HTTPException):
             pass
 
@@ -249,7 +257,8 @@ class Vanity(commands.Cog):
             f"`{prefix}vanity role remove <@role>`\n"
             f"`{prefix}vanity role list`\n"
             f"`{prefix}vanity config`\n"
-            f"`{prefix}vanity resync`",
+            f"`{prefix}vanity resync`\n"
+            f"`{prefix}vanity test`",
         )
 
     @vanity.command(name="set")
@@ -402,6 +411,25 @@ class Vanity(commands.Cog):
             lines.append(f"{r.mention}{change}")
 
         await msg.edit(content="\n".join(lines))
+
+    @vanity.command(name="test")
+    async def vanity_test(self, ctx):
+        """Preview the vanity award message here using you as the target."""
+        cfg = self._cfg.get(ctx.guild.id)
+        if not cfg or not cfg.get("message"):
+            return await ctx.send("❌ No vanity award message configured (`vanity message <text>`).")
+        rendered = embed_script.render(
+            cfg["message"], user=ctx.author, guild=ctx.guild, channel=ctx.channel,
+        )
+        if rendered.is_empty:
+            return await ctx.send("❌ The award message rendered empty.")
+        await ctx.send("**Preview:**", delete_after=5)
+        await ctx.send(
+            content=rendered.content,
+            embed=rendered.embed,
+            view=rendered.view or discord.utils.MISSING,
+            allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+        )
 
 
 async def setup(bot):
