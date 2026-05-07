@@ -61,7 +61,7 @@ class AFK(commands.Cog):
             ctx.guild.id, ctx.author.id, reason, now,
         )
         self._cache[(ctx.guild.id, ctx.author.id)] = {"reason": reason, "set_at": now}
-        await ctx.send(f"You're now AFK: **{reason}**")
+        await ctx.send(f"💤 You're now AFK: **{reason}**")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

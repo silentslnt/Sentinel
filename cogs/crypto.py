@@ -456,7 +456,7 @@ class Crypto(commands.Cog):
             return await ctx.send(embed=embed)
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
         await ctx.send(
-            f"**Crypto**\n"
+            f"💰 **Crypto**\n"
             f"`{prefix}crypto <coin>` · single-coin price\n"
             f"`{prefix}crypto panel <#channel> <coin1,coin2,…>` · self-updating multi-coin embed\n"
             f"`{prefix}crypto removepanel <#channel>` · remove a panel\n"
@@ -518,7 +518,7 @@ class Crypto(commands.Cog):
         ]
         try:
             await ctx.author.send("\n".join(lines))
-            await ctx.send("Sent to your DMs.")
+            await ctx.send("📬 Sent to your DMs.")
         except discord.Forbidden:
             await ctx.send("\n".join(lines))
 
