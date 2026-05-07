@@ -25,6 +25,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from utils.checks import with_perms
+
 log = logging.getLogger("sentinel.crypto")
 
 SCHEMA = """
@@ -461,7 +463,7 @@ class Crypto(commands.Cog):
         )
 
     @crypto.command(name="panel")
-    @commands.has_permissions(manage_messages=True)
+    @with_perms(manage_messages=True)
     async def panel(self, ctx, channel: discord.TextChannel, *, coins: str):
         """Post a self-updating multi-coin embed in <channel>. Coins comma-separated."""
         coin_ids = [_resolve(c) for c in coins.replace(" ", ",").split(",") if c.strip()]
@@ -487,7 +489,7 @@ class Crypto(commands.Cog):
         await ctx.send(f"✅ Panel posted in {channel.mention} (refreshes every {PANEL_REFRESH_MINUTES}m).")
 
     @crypto.command(name="removepanel")
-    @commands.has_permissions(manage_messages=True)
+    @with_perms(manage_messages=True)
     async def removepanel(self, ctx, channel: discord.TextChannel):
         """Stop updating a crypto panel in <channel>."""
         result = await self.bot.db.execute(

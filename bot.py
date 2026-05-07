@@ -43,6 +43,7 @@ SLASH_ALLOWLIST = frozenset({
 
 INITIAL_COGS = (
     "cogs.configure",
+    "cogs.restrictions",
     "cogs.moderation",
     "cogs.role_manager",
     "cogs.channel_manager",
@@ -155,6 +156,8 @@ class Sentinel(commands.Bot):
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandNotFound):
             return
+        if isinstance(error, commands.DisabledCommand):
+            return await ctx.send("❌ That command is disabled in this server.")
         if isinstance(error, commands.CheckFailure):
             return await ctx.send(f"❌ {error}")
         if isinstance(error, commands.MissingPermissions):

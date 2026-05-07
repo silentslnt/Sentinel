@@ -8,7 +8,7 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
-from utils.checks import is_whitelisted
+from utils.checks import is_whitelisted, with_perms
 
 MAX_TIMEOUT_MINUTES = 40320  # Discord cap: 28 days
 MAX_SLOWMODE_SECONDS = 21600  # Discord cap: 6 hours
@@ -68,7 +68,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command()
     @commands.guild_only()
-    @commands.has_permissions(kick_members=True)
+    @with_perms(kick_members=True)
     @commands.bot_has_permissions(kick_members=True)
     async def kick(self, ctx, member: discord.Member, *, reason: Optional[str] = None):
         """Kick a member from the server."""
@@ -93,7 +93,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command()
     @commands.guild_only()
-    @commands.has_permissions(ban_members=True)
+    @with_perms(ban_members=True)
     @commands.bot_has_permissions(ban_members=True)
     async def ban(self, ctx, member: discord.Member, *, reason: Optional[str] = None):
         """Ban a member from the server."""
@@ -118,7 +118,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command()
     @commands.guild_only()
-    @commands.has_permissions(ban_members=True)
+    @with_perms(ban_members=True)
     @commands.bot_has_permissions(ban_members=True)
     async def unban(self, ctx, *, user: str):
         """Unban a user. Accepts a user ID (preferred) or username."""
@@ -151,7 +151,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command(aliases=["m", "timeout"])
     @commands.guild_only()
-    @commands.has_permissions(moderate_members=True)
+    @with_perms(moderate_members=True)
     @commands.bot_has_permissions(moderate_members=True)
     async def mute(
         self,
@@ -186,7 +186,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command(aliases=["um", "untimeout"])
     @commands.guild_only()
-    @commands.has_permissions(moderate_members=True)
+    @with_perms(moderate_members=True)
     @commands.bot_has_permissions(moderate_members=True)
     async def unmute(self, ctx, member: discord.Member):
         """Remove timeout from a member."""
@@ -202,7 +202,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command(aliases=["clear", "c", "pg"])
     @commands.guild_only()
-    @commands.has_permissions(manage_messages=True)
+    @with_perms(manage_messages=True)
     @commands.bot_has_permissions(manage_messages=True)
     async def purge(self, ctx, amount: int):
         """Purge messages from the channel. Amount (1–100) is required."""
@@ -224,7 +224,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command(aliases=["sm"])
     @commands.guild_only()
-    @commands.has_permissions(manage_channels=True)
+    @with_perms(manage_channels=True)
     @commands.bot_has_permissions(manage_channels=True)
     async def slowmode(self, ctx, seconds: int = 0):
         """Set channel slowmode (0 to disable, max 21600 = 6 hours)."""
@@ -237,7 +237,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command()
     @commands.guild_only()
-    @commands.has_permissions(manage_channels=True)
+    @with_perms(manage_channels=True)
     @commands.bot_has_permissions(manage_channels=True)
     async def lock(self, ctx, channel: Optional[discord.TextChannel] = None):
         """Lock a channel for @everyone."""
@@ -251,7 +251,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command()
     @commands.guild_only()
-    @commands.has_permissions(manage_channels=True)
+    @with_perms(manage_channels=True)
     @commands.bot_has_permissions(manage_channels=True)
     async def unlock(self, ctx, channel: Optional[discord.TextChannel] = None):
         """Unlock a channel (clears the @everyone send override)."""
@@ -308,7 +308,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command(aliases=["w"])
     @commands.guild_only()
-    @commands.has_permissions(manage_roles=True)
+    @with_perms(manage_roles=True)
     async def warn(self, ctx, member: discord.Member, *, reason: str = "No reason provided"):
         """Warn a member (sends them a DM if possible)."""
         if err := self._hierarchy_error(ctx, member):

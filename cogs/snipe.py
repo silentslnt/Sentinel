@@ -17,6 +17,8 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
+from utils.checks import with_perms
+
 EXPIRY_SECONDS = 3600
 MAX_HISTORY = 10
 
@@ -150,7 +152,7 @@ class SnipeCog(commands.Cog):
 
     @commands.command(name="clearsnipe", aliases=["cs"])
     @commands.guild_only()
-    @commands.has_permissions(manage_messages=True)
+    @with_perms(manage_messages=True)
     async def clearsnipe(self, ctx):
         """Clear all snipe history for this channel."""
         self._deleted.pop(ctx.channel.id, None)

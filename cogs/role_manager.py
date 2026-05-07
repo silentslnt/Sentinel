@@ -13,7 +13,7 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
-from utils.checks import is_guild_admin
+from utils.checks import is_guild_admin, with_perms
 
 log = logging.getLogger("sentinel.role_manager")
 
@@ -52,7 +52,7 @@ class RoleManager(commands.Cog):
 
     @commands.group(name="role", aliases=["r"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_roles=True)
+    @with_perms(manage_roles=True)
     async def role(self, ctx):
         """Role management."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)

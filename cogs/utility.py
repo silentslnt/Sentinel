@@ -1,5 +1,7 @@
 import discord
 from discord.ext import commands
+
+from utils.checks import with_perms
 import asyncio
 import platform
 import psutil
@@ -171,7 +173,7 @@ class Utility(commands.Cog):
         await ctx.send(embed=embed)
     
     @commands.command(aliases=['poll'])
-    @commands.has_permissions(manage_messages=True)
+    @with_perms(manage_messages=True)
     async def createpoll(self, ctx, question, *options):
         """Create a poll (max 10 options)"""
         if len(options) > 10:
