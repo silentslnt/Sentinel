@@ -13,6 +13,8 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
+from utils.checks import is_guild_admin
+
 log = logging.getLogger("sentinel.booster")
 
 SCHEMA = """
@@ -62,7 +64,7 @@ class Booster(commands.Cog):
 
     @commands.group(name="boosterrole", aliases=["br"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_roles=True)
+    @commands.check(is_guild_admin)
     async def boosterrole(self, ctx):
         """Booster role configuration."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)
@@ -75,11 +77,15 @@ class Booster(commands.Cog):
         )
 
     @boosterrole.group(name="award", invoke_without_command=True)
+    @commands.guild_only()
+    @commands.check(is_guild_admin)
     async def award(self, ctx):
         """Manage the booster award role."""
         await self.boosterrole(ctx)
 
     @award.command(name="set")
+    @commands.guild_only()
+    @commands.check(is_guild_admin)
     async def award_set(self, ctx, role: discord.Role):
         """Set the role granted automatically when a member boosts."""
         if role >= ctx.guild.me.top_role:
@@ -93,6 +99,8 @@ class Booster(commands.Cog):
         await ctx.send(f"✅ Boosters will now receive {role.mention}.")
 
     @award.command(name="remove")
+    @commands.guild_only()
+    @commands.check(is_guild_admin)
     async def award_remove(self, ctx):
         """Stop auto-granting any role on boost."""
         await self.bot.db.execute(
@@ -103,6 +111,8 @@ class Booster(commands.Cog):
         await ctx.send("✅ Booster award role unset.")
 
     @award.command(name="view")
+    @commands.guild_only()
+    @commands.check(is_guild_admin)
     async def award_view(self, ctx):
         """View the current booster award role."""
         rid = self._cache.get(ctx.guild.id)
@@ -110,6 +120,8 @@ class Booster(commands.Cog):
         await ctx.send(f"Current booster award role: {role.mention if role else '—'}")
 
     @award.command(name="sync")
+    @commands.guild_only()
+    @commands.check(is_guild_admin)
     async def award_sync(self, ctx):
         """Grant/revoke the award role for current boosters now."""
         rid = self._cache.get(ctx.guild.id)

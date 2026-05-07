@@ -17,6 +17,8 @@ from typing import Callable
 import discord
 from discord.ext import commands, tasks
 
+from utils.checks import is_guild_admin
+
 log = logging.getLogger("sentinel.counters")
 
 SCHEMA = """
@@ -88,7 +90,7 @@ class Counters(commands.Cog):
 
     @commands.group(name="counter", aliases=["ct"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_channels=True)
+    @commands.check(is_guild_admin)
     async def counter(self, ctx):
         """Counter channels. Subcommands: add, remove, list."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)

@@ -17,6 +17,7 @@ import discord
 from discord.ext import commands
 
 from utils import embed_script
+from utils.checks import is_guild_admin
 from utils.embed_builder import EmbedBuilderView
 
 log = logging.getLogger("sentinel.embeds")
@@ -304,7 +305,7 @@ class Embeds(commands.Cog):
 
     @commands.group(name="embed", aliases=["em"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_messages=True)
+    @commands.check(is_guild_admin)
     async def embed(self, ctx):
         """Embed builder & library."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)

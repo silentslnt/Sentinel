@@ -13,6 +13,7 @@ import discord
 from discord.ext import commands
 
 from utils import embed_script
+from utils.checks import is_guild_admin
 from cogs.embeds import fetch_script, build_view
 
 log = logging.getLogger("sentinel.sticky")
@@ -102,7 +103,7 @@ class Sticky(commands.Cog):
 
     @commands.group(name="sticky", aliases=["stk"], invoke_without_command=True)
     @commands.guild_only()
-    @commands.has_permissions(manage_messages=True)
+    @commands.check(is_guild_admin)
     async def sticky(self, ctx):
         """Sticky messages."""
         prefix = self.bot.guild_config.get_prefix(ctx.guild.id)

@@ -8,6 +8,8 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
+from utils.checks import is_guild_admin
+
 MAX_TIMEOUT_MINUTES = 40320  # Discord cap: 28 days
 MAX_SLOWMODE_SECONDS = 21600  # Discord cap: 6 hours
 
@@ -263,7 +265,7 @@ class Moderation(commands.Cog):
 
     @commands.hybrid_command()
     @commands.guild_only()
-    @commands.has_permissions(administrator=True)
+    @commands.check(is_guild_admin)
     @commands.bot_has_permissions(manage_channels=True)
     async def nuke(self, ctx):
         """Delete and recreate the channel. Requires confirmation."""

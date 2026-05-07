@@ -13,6 +13,8 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
+from utils.checks import is_guild_admin
+
 log = logging.getLogger("sentinel.role_manager")
 
 BULK_DELAY = 1.5
@@ -177,26 +179,31 @@ class RoleManager(commands.Cog):
     # ---------- bulk ----------
 
     @role.group(name="all", invoke_without_command=True)
+    @commands.check(is_guild_admin)
     async def all_group(self, ctx):
         """Bulk role operations."""
         await self.role(ctx)
 
     @all_group.command(name="add")
+    @commands.check(is_guild_admin)
     async def all_add(self, ctx, role: discord.Role):
         """Give a role to every human member."""
         await self._bulk(ctx, role, action="add", target="humans")
 
     @all_group.command(name="addbots")
+    @commands.check(is_guild_admin)
     async def all_addbots(self, ctx, role: discord.Role):
         """Give a role to every bot member."""
         await self._bulk(ctx, role, action="add", target="bots")
 
     @all_group.command(name="addin")
+    @commands.check(is_guild_admin)
     async def all_addin(self, ctx, target_role: discord.Role, source_role: discord.Role):
         """Give a role to everyone who already has another role."""
         await self._bulk(ctx, target_role, action="add", target="in", source_role=source_role)
 
     @all_group.command(name="remove")
+    @commands.check(is_guild_admin)
     async def all_remove(self, ctx, role: discord.Role):
         """Remove a role from every member that has it."""
         await self._bulk(ctx, role, action="remove", target="all")
